@@ -26,7 +26,7 @@ RenderSettings:
   m_AmbientIntensity: 1
   m_AmbientMode: 1
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 2100000, guid: 7609cb45314bdbd43953c3f5d74ca7c3, type: 2}
+  m_SkyboxMaterial: {fileID: 2100000, guid: e6ec4ae9ee5213642bbb16014ebd2624, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0, g: 0, b: 0, a: 1}
+  m_IndirectSpecularColor: {r: 0.3322065, g: 0.3627174, b: 0.46474278, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -521,10 +521,10 @@ MonoBehaviour:
   useAssignedLayers: 0
   DynamicPrefabs: []
   DynamicMaterials:
-  - {fileID: 2100000, guid: 7ebab2df07e9d754a966b51ee5387531, type: 2}
-  - {fileID: 2100000, guid: 411e0ffd278f45c40a31c2c7f75fb2cc, type: 2}
-  - {fileID: 2100000, guid: acff6b3349ced584c8e5dfc51cc0404e, type: 2}
-  - {fileID: 2100000, guid: b446a41918784bf45981cb414befb6e5, type: 2}
+  - {fileID: 2100000, guid: 0908c7c8468585140b5320f6379af803, type: 2}
+  - {fileID: 2100000, guid: 1d77fb869991ce94f919f8655bb15146, type: 2}
+  - {fileID: 2100000, guid: b8df1e9d4b9c6e14ab2372495f15748b, type: 2}
+  - {fileID: 2100000, guid: f8e550199c767714b8af8f305ae40fec, type: 2}
   LightMapsNear: []
   LightMapsFar: []
   LightMode: 0
@@ -577,7 +577,12 @@ MonoBehaviour:
   RenderReflectionBounces: 0
   RenderReflectionIntensity: 0
   RenderSkybox: {fileID: 0}
-  NetworkIDs: []
+  NetworkIDs:
+  - gameObject: {fileID: 3480278762663670689}
+    ID: 10
+    SerializedTypeNames:
+    - VRC.Udon.UdonBehaviour
+    - VRC.Udon.UdonBehaviour
   portraitCameraPositionOffset: {x: 0, y: 0, z: 0}
   portraitCameraRotationOffset: {x: 0, y: 1, z: 0, w: -0.00000004371139}
   PlayerPersistence: []
@@ -651,7 +656,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: b446a41918784bf45981cb414befb6e5, type: 2}
+  - {fileID: 2100000, guid: f8e550199c767714b8af8f305ae40fec, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
