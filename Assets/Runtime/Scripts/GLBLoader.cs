@@ -60,6 +60,12 @@ namespace VoyageVoyage
         int glbDataStart = 0;
         bool finished = false;
         float limit = 0;
+        
+        // Multi-pass download state
+        const int TOTAL_SPATIAL_PASSES = 4;
+        int currentSpatialPass = 0;
+        VRCUrl downloadUrl;
+        GameObject[] accumulatedNodes = new GameObject[0];
 
         const int GLTF_NEAREST = 9728;
         const int GLTF_LINEAR = 9729;
@@ -311,6 +317,26 @@ namespace VoyageVoyage
             glb = glbData;
             StartParsing();
         }
+        
+        void MergeNodesAndRestart()
+        {
+            // Save current nodes before resetting
+            int oldLen = accumulatedNodes.Length;
+            int newLen = m_nodes.Length;
+            GameObject[] merged = new GameObject[oldLen + newLen];
+            for (int i = 0; i < oldLen; i++) merged[i] = accumulatedNodes[i];
+            for (int i = 0; i < newLen; i++) merged[oldLen + i] = m_nodes[i];
+            accumulatedNodes = merged;
+            
+            // Reset parsing state (but keep scene)
+            ResetState();
+            currentState = -1;
+            currentIndex = -1;
+            finished = false;
+            
+            // Re-download for next spatial pass
+            VRCStringDownloader.LoadUrl(downloadUrl, (VRC.Udon.Common.Interfaces.IUdonEventReceiver)this);
+        }
 
         void RemoveAllChildrenOf(Transform t)
         {
@@ -389,6 +415,9 @@ namespace VoyageVoyage
 
         void DownloadModel()
         {
+            downloadUrl = userURL;
+            currentSpatialPass = 0;
+            accumulatedNodes = new GameObject[0];
             VRCStringDownloader.LoadUrl(userURL, (VRC.Udon.Common.Interfaces.IUdonEventReceiver)this);
         }
 
@@ -1209,12 +1238,15 @@ namespace VoyageVoyage
         }
 
         // Array-based spatial mesh splitting for Udon compatibility (no generics)
+        // Only processes chunks assigned to currentSpatialPass
         Mesh[] SplitMeshSpatially(Mesh sourceMesh, string baseName)
         {
             int vertCount = sourceMesh.vertexCount;
             if (vertCount <= MAX_VERTS_PER_CHUNK)
             {
-                return new Mesh[] { sourceMesh };
+                // Small mesh - only process on first pass
+                if (currentSpatialPass == 0) return new Mesh[] { sourceMesh };
+                else return new Mesh[0];
             }
 
             // Calculate grid dimensions based on bounding box
@@ -1272,9 +1304,12 @@ namespace VoyageVoyage
                     cellTriangleCounts[cellIndex]++;
                 }
 
-                // Create chunks for non-empty cells
+                // Create chunks for non-empty cells (only process cells assigned to current pass)
                 for (int cellIndex = 0; cellIndex < totalCells; cellIndex++)
                 {
+                    // Distribute cells across passes using modulo
+                    if ((cellIndex % TOTAL_SPATIAL_PASSES) != currentSpatialPass) continue;
+                    
                     int triCount = cellTriangleCounts[cellIndex];
                     if (triCount == 0) continue;
 
@@ -2873,8 +2908,19 @@ namespace VoyageVoyage
                     currentIndex = SelectScene(currentIndex);
                     break;
                 default:
-                    finished = true;
-                    //enabled = false;
+                    // Check if we need another spatial pass
+                    currentSpatialPass++;
+                    if (currentSpatialPass < TOTAL_SPATIAL_PASSES && downloadUrl != null)
+                    {
+                        ReportInfo("ParseGLB", $"Starting spatial pass {currentSpatialPass}/{TOTAL_SPATIAL_PASSES}");
+                        // Merge current nodes with accumulated
+                        MergeNodesAndRestart();
+                    }
+                    else
+                    {
+                        finished = true;
+                        //enabled = false;
+                    }
                     break;
             }
 
