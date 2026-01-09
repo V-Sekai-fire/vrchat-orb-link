@@ -54,7 +54,9 @@ namespace net.fushizen.attachable
             if (scenesRoot != null && scenesRoot.childCount > 0)
             {
                 GameObject loadedModel = scenesRoot.GetChild(scenesRoot.childCount - 1).gameObject;
-                callback.SendCustomEvent("OnGLBLoadComplete", loadedModel);
+                // Set the loaded model on the callback and trigger the event
+                callback.SetProgramVariable("loadedModel", loadedModel);
+                callback.SendCustomEvent("OnGLBLoadComplete");
                 Debug.Log($"[OrbGLBIntegration] Loaded model from {currentUrl}: {loadedModel.name}");
             }
             else

@@ -18,6 +18,7 @@ using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
 using VRC.Udon;
+using System.Collections.Generic;
 
 namespace net.fushizen.attachable
 {
@@ -32,12 +33,14 @@ namespace net.fushizen.attachable
         [SerializeField] private Transform orbParent;
         [SerializeField] private net.fushizen.attachable.OrbGLBIntegration glbIntegration;
         [SerializeField] private AttachableRegistration attachableRegistration;
+        [SerializeField] private GameObject glbLoaderPrefab;
         
         private string currentUrl = "";
         private float cooldownEndTime = 0f;
         private int selectedCooldownOption = 0; // 0=Off, 1=5s, 2=10s, 3=30s
         private bool isWorldScope = true;
         private GameObject selectedOrb = null;
+        private UdonSharpBehaviour glbLoader = null;
         
         // Cache for loaded models
         private class CacheEntry
@@ -45,7 +48,7 @@ namespace net.fushizen.attachable
             public GameObject model;
             public float timestamp;
         }
-        private VRC.SDK3.Data.DataDictionary modelCache = new VRC.SDK3.Data.DataDictionary();
+        private Dictionary<string, CacheEntry> modelCache = new Dictionary<string, CacheEntry>();
         
         void Start()
         {
@@ -125,9 +128,9 @@ namespace net.fushizen.attachable
             if (modelCache.ContainsKey(currentUrl))
             {
                 var cached = modelCache[currentUrl];
-                if (cached is GameObject)
+                if (cached != null && cached.model != null)
                 {
-                    SpawnOrb((GameObject)cached);
+                    SpawnOrb(cached.model);
                 }
             }
             else if (glbIntegration != null)
@@ -173,71 +176,15 @@ namespace net.fushizen.attachable
                 // Initialize with scope setting (true = world scope, false = orb scope)
                 dynamicOrb.Initialize(currentUrl, model, isWorldScope);
             }
-
-            // Make it attachable by applying the Attachable setup
-            ApplyAttachableSetup(newOrb);
-            
-            // Register with the global tracking system
-            if (attachableRegistration != null)
-            {
-                attachableRegistration.RegisterOrb(newOrb);
-            }
             
             string scopeType = isWorldScope ? "World" : "Orb";
             Debug.Log($"[DynamicOrbLoader] Spawned new {scopeType}-scope orb: {newOrb.name}");
         }
 
-        private void ApplyAttachableSetup(GameObject orb)
+        public void OnGLBLoadComplete()
         {
-            // Get or create the Attachable component
-            Attachable attachable = orb.GetComponent<Attachable>();
-            if (attachable == null)
-            {
-                attachable = orb.AddComponent<Attachable>();
-            }
-
-            // Get or ensure Rigidbody
-            Rigidbody rb = orb.GetComponent<Rigidbody>();
-            if (rb == null)
-            {
-                rb = orb.AddComponent<Rigidbody>();
-                rb.isKinematic = true;
-                rb.useGravity = false;
-            }
-
-            // Ensure Collider exists
-            Collider collider = orb.GetComponent<Collider>();
-            if (collider == null)
-            {
-                SphereCollider sphere = orb.AddComponent<SphereCollider>();
-                sphere.radius = 0.5f;
-            }
-
-            // Create attachment direction marker if it doesn't exist
-            Transform directionMarker = orb.transform.Find("AttachmentDirection");
-            if (directionMarker == null)
-            {
-                GameObject dirMarkerObj = new GameObject("AttachmentDirection");
-                dirMarkerObj.transform.SetParent(orb.transform);
-                dirMarkerObj.transform.localPosition = Vector3.zero;
-                dirMarkerObj.transform.localRotation = Quaternion.identity;
-                directionMarker = dirMarkerObj.transform;
-            }
-
-            // Configure Attachable component
-            attachable.pickup = orb.GetComponent<VRC_Pickup>();
-            if (attachable.pickup == null)
-            {
-                attachable.pickup = orb.AddComponent<VRC_Pickup>();
-            }
-            
-            attachable.attachmentDirection = directionMarker;
-            
-            Debug.Log($"[DynamicOrbLoader] Applied Attachable setup to {orb.name}");
-        }
-
-        public void OnGLBLoadComplete(GameObject loadedModel)
-        {
+            // Get the loaded model that was set by OrbGLBIntegration via SetProgramVariable
+            GameObject loadedModel = glbIntegration.GetProgramVariable("loadedModel") as GameObject;
             if (loadedModel != null)
             {
                 SpawnOrb(loadedModel);

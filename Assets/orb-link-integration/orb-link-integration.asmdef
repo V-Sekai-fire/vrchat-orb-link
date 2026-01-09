@@ -3,10 +3,11 @@
     "rootNamespace": "",
     "references": [
         "io.github.vr-voyage.vrchat.glb-loader",
-        "UdonSharp",
+        "UdonSharp.Runtime",
         "Unity.TextMeshPro",
         "VRC.SDKBase",
-        "VRC.SDK3"
+        "VRC.SDK3",
+        "VRC.Udon"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
