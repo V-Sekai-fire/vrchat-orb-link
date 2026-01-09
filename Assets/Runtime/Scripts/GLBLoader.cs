@@ -313,7 +313,11 @@ namespace VoyageVoyage
 
         public void StartParsingGlb(byte[] glbData)
         {
-            Clear();
+            // Do a full scene clear only on the first spatial pass; later passes reuse accumulated chunks
+            if (currentSpatialPass == 0)
+            {
+                Clear();
+            }
             glb = glbData;
             StartParsing();
         }
