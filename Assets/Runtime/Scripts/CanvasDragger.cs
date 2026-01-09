@@ -43,19 +43,21 @@ public class CanvasDragger : UdonSharpBehaviour
         isGrabbed = false;
     }
 
-    private void Update()
+    private void FixedUpdate()
     {
         if (!isGrabbed || localPlayer == null) return;
 
         if (localPlayer.IsUserInVR())
         {
-            // Update canvas position to follow hand
+            // Update canvas position to follow hand using Rigidbody
             Vector3 handPos = localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.RightHand).position;
-            canvasTransform.position = handPos + grabOffset;
+            Vector3 newPos = handPos + grabOffset;
+            rb.MovePosition(newPos);
             
             // Update rotation
             Quaternion handRot = localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.RightHand).rotation;
-            canvasTransform.rotation = handRot * grabRotationOffset;
+            Quaternion newRot = handRot * grabRotationOffset;
+            rb.MoveRotation(newRot);
         }
     }
 }
