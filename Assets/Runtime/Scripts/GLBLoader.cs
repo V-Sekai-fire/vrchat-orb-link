@@ -41,6 +41,8 @@ namespace VoyageVoyage
         object[] m_accessors = new object[0];
         public Material[] m_materials = new Material[0];
         object[] m_meshesInfo = new object[0];
+        Mesh[][] m_meshChunks = new Mesh[0][]; // Chunked meshes for progressive loading
+        int[] m_meshChunkMaterialIndices = new int[0]; // Material indices for chunks
         public Texture2D[] m_textures = new Texture2D[0];
         object[] m_imagesProperties = new object[0];
         object[] m_samplerProperties = new object[0];
@@ -103,6 +105,10 @@ namespace VoyageVoyage
         const int statsFieldImages = 1;
         const int statsFieldMaterials = 2;
         const int statsFieldCount = 3;
+
+        /* Spatial Chunking Constants */
+        const int MAX_VERTS_PER_CHUNK = 10000;
+        const float GRID_CELL_SIZE = 2.0f;
 
         const string voyageExtensionName = "EXT_voyage_exporter";
         const string msftExtensionName = "MSFT_texture_dds";
@@ -1202,6 +1208,119 @@ namespace VoyageVoyage
 
         }
 
+        // Spatial mesh splitting based on splerger algorithm
+        Mesh[] SplitMeshSpatially(Mesh sourceMesh, string baseName)
+        {
+            int vertCount = sourceMesh.vertexCount;
+            if (vertCount <= MAX_VERTS_PER_CHUNK)
+            {
+                return new Mesh[] { sourceMesh };
+            }
+
+            // Calculate grid dimensions based on bounding box
+            Bounds bounds = sourceMesh.bounds;
+            Vector3 size = bounds.size;
+            int xSplits = Mathf.Max(1, Mathf.CeilToInt(size.x / GRID_CELL_SIZE));
+            int ySplits = Mathf.Max(1, Mathf.CeilToInt(size.y / GRID_CELL_SIZE));
+            int zSplits = Mathf.Max(1, Mathf.CeilToInt(size.z / GRID_CELL_SIZE));
+
+            Vector3 min = bounds.min;
+            Vector3 cellSize = new Vector3(size.x / xSplits, size.y / ySplits, size.z / zSplits);
+
+            Vector3[] vertices = sourceMesh.vertices;
+            Vector3[] normals = sourceMesh.normals;
+            Vector2[] uv = sourceMesh.uv;
+            Vector4[] tangents = sourceMesh.tangents;
+            Color[] colors = sourceMesh.colors;
+
+            bool hasNormals = normals != null && normals.Length > 0;
+            bool hasUV = uv != null && uv.Length > 0;
+            bool hasTangents = tangents != null && tangents.Length > 0;
+            bool hasColors = colors != null && colors.Length > 0;
+
+            System.Collections.Generic.List<Mesh> chunks = new System.Collections.Generic.List<Mesh>();
+
+            // Process each submesh separately to preserve materials
+            for (int subMeshIndex = 0; subMeshIndex < sourceMesh.subMeshCount; subMeshIndex++)
+            {
+                int[] sourceTriangles = sourceMesh.GetTriangles(subMeshIndex);
+
+                // Group triangles by grid cell
+                System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<int>> cellTriangles = 
+                    new System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<int>>();
+
+                for (int t = 0; t < sourceTriangles.Length; t += 3)
+                {
+                    int i0 = sourceTriangles[t];
+                    int i1 = sourceTriangles[t + 1];
+                    int i2 = sourceTriangles[t + 2];
+
+                    // Calculate triangle center
+                    Vector3 center = (vertices[i0] + vertices[i1] + vertices[i2]) / 3f;
+
+                    // Determine grid cell
+                    int x = Mathf.Clamp((int)((center.x - min.x) / cellSize.x), 0, xSplits - 1);
+                    int y = Mathf.Clamp((int)((center.y - min.y) / cellSize.y), 0, ySplits - 1);
+                    int z = Mathf.Clamp((int)((center.z - min.z) / cellSize.z), 0, zSplits - 1);
+                    int cellIndex = x + y * xSplits + z * xSplits * ySplits;
+
+                    if (!cellTriangles.ContainsKey(cellIndex))
+                    {
+                        cellTriangles[cellIndex] = new System.Collections.Generic.List<int>();
+                    }
+                    cellTriangles[cellIndex].Add(i0);
+                    cellTriangles[cellIndex].Add(i1);
+                    cellTriangles[cellIndex].Add(i2);
+                }
+
+                // Create mesh chunks from grid cells
+                foreach (var kvp in cellTriangles)
+                {
+                    System.Collections.Generic.List<int> triangleIndices = kvp.Value;
+                    if (triangleIndices.Count == 0) continue;
+
+                    // Build unique vertex list for this chunk
+                    System.Collections.Generic.Dictionary<int, int> vertexRemap = new System.Collections.Generic.Dictionary<int, int>();
+                    System.Collections.Generic.List<Vector3> chunkVerts = new System.Collections.Generic.List<Vector3>();
+                    System.Collections.Generic.List<Vector3> chunkNormals = new System.Collections.Generic.List<Vector3>();
+                    System.Collections.Generic.List<Vector2> chunkUV = new System.Collections.Generic.List<Vector2>();
+                    System.Collections.Generic.List<Vector4> chunkTangents = new System.Collections.Generic.List<Vector4>();
+                    System.Collections.Generic.List<Color> chunkColors = new System.Collections.Generic.List<Color>();
+                    System.Collections.Generic.List<int> chunkTriangles = new System.Collections.Generic.List<int>();
+
+                    for (int i = 0; i < triangleIndices.Count; i++)
+                    {
+                        int oldIndex = triangleIndices[i];
+                        if (!vertexRemap.ContainsKey(oldIndex))
+                        {
+                            int newIndex = chunkVerts.Count;
+                            vertexRemap[oldIndex] = newIndex;
+                            chunkVerts.Add(vertices[oldIndex]);
+                            if (hasNormals) chunkNormals.Add(normals[oldIndex]);
+                            if (hasUV) chunkUV.Add(uv[oldIndex]);
+                            if (hasTangents) chunkTangents.Add(tangents[oldIndex]);
+                            if (hasColors) chunkColors.Add(colors[oldIndex]);
+                        }
+                        chunkTriangles.Add(vertexRemap[oldIndex]);
+                    }
+
+                    // Create chunk mesh
+                    Mesh chunkMesh = new Mesh();
+                    chunkMesh.name = $"{baseName}_chunk{chunks.Count}_sub{subMeshIndex}";
+                    chunkMesh.vertices = chunkVerts.ToArray();
+                    if (hasNormals) chunkMesh.normals = chunkNormals.ToArray();
+                    if (hasUV) chunkMesh.uv = chunkUV.ToArray();
+                    if (hasTangents) chunkMesh.tangents = chunkTangents.ToArray();
+                    if (hasColors) chunkMesh.colors = chunkColors.ToArray();
+                    chunkMesh.triangles = chunkTriangles.ToArray();
+
+                    chunks.Add(chunkMesh);
+                }
+            }
+
+            return chunks.ToArray();
+        }
+
         bool LoadMesh(DataDictionary meshInfo, out string name, out Mesh mesh, out int[] matIndices)
         {
             mesh = new Mesh();
@@ -1317,6 +1436,7 @@ namespace VoyageVoyage
                 if (!hasMeshes)
                 {
                     m_meshesInfo = new object[0];
+                    m_meshChunks = new Mesh[0][];
                     return sectionComplete;
                 }
             }
@@ -1327,6 +1447,7 @@ namespace VoyageVoyage
             if (startFrom == 0)
             {
                 m_meshesInfo = new object[nMeshes];
+                m_meshChunks = new Mesh[nMeshes][];
             }
 
             object[] meshesInfo = m_meshesInfo;
@@ -1338,6 +1459,10 @@ namespace VoyageVoyage
 
                 bool gotAMesh = LoadMesh((DataDictionary)meshInfoToken, out string name, out Mesh mesh, out int[] materialsIndices);
                 if (!gotAMesh) continue;
+
+                // Split large meshes into spatial chunks
+                Mesh[] chunks = SplitMeshSpatially(mesh, name);
+                m_meshChunks[m] = chunks;
 
                 meshesInfo[m] = new object[] { mesh, materialsIndices };
                 CountNewTriangles(mesh.triangles.LongLength);
@@ -1410,30 +1535,75 @@ namespace VoyageVoyage
             if (mesh == null) return;
             mesh.RecalculateBounds();
 
-            MeshFilter filter = node.GetComponent<MeshFilter>();
-            filter.sharedMesh = mesh;
+            // Check if we have spatial chunks for this mesh
+            bool hasChunks = (meshIndex < m_meshChunks.Length) && (m_meshChunks[meshIndex] != null) && (m_meshChunks[meshIndex].Length > 1);
 
-            if (materialsIndices == null) return;
-            MeshRenderer renderer = filter.GetComponent<MeshRenderer>();
-
-            int nIndices = materialsIndices.Length;
-            int nKnownMaterials = m_materials.Length;
-
-            Material[] sharedMaterials = new Material[nIndices];
-
-            for (int sharedMatIndex = 0; sharedMatIndex < nIndices; sharedMatIndex++)
+            if (hasChunks)
             {
-                int materialIndex = materialsIndices[sharedMatIndex];
-                if ((materialIndex >= 0) & (materialIndex < nKnownMaterials))
+                // Spawn each chunk as a child GameObject
+                Mesh[] chunks = m_meshChunks[meshIndex];
+                for (int c = 0; c < chunks.Length; c++)
                 {
-                    sharedMaterials[sharedMatIndex] = m_materials[materialIndex];
-                }
-                else
-                {
-                    sharedMaterials[sharedMatIndex] = NewMaterial(baseMaterial);
+                    GameObject chunkNode = Instantiate(nodePrefab, node.transform);
+                    chunkNode.name = $"{node.name}_chunk{c}";
+
+                    Mesh chunkMesh = chunks[c];
+                    chunkMesh.RecalculateBounds();
+
+                    MeshFilter chunkFilter = chunkNode.GetComponent<MeshFilter>();
+                    chunkFilter.sharedMesh = chunkMesh;
+
+                    if (materialsIndices != null)
+                    {
+                        MeshRenderer chunkRenderer = chunkFilter.GetComponent<MeshRenderer>();
+                        int nIndices = materialsIndices.Length;
+                        int nKnownMaterials = m_materials.Length;
+
+                        Material[] sharedMaterials = new Material[nIndices];
+                        for (int sharedMatIndex = 0; sharedMatIndex < nIndices; sharedMatIndex++)
+                        {
+                            int materialIndex = materialsIndices[sharedMatIndex];
+                            if ((materialIndex >= 0) & (materialIndex < nKnownMaterials))
+                            {
+                                sharedMaterials[sharedMatIndex] = m_materials[materialIndex];
+                            }
+                            else
+                            {
+                                sharedMaterials[sharedMatIndex] = NewMaterial(baseMaterial);
+                            }
+                        }
+                        chunkRenderer.sharedMaterials = sharedMaterials;
+                    }
                 }
             }
-            renderer.sharedMaterials = sharedMaterials;
+            else
+            {
+                // Original single mesh setup
+                MeshFilter filter = node.GetComponent<MeshFilter>();
+                filter.sharedMesh = mesh;
+
+                if (materialsIndices == null) return;
+                MeshRenderer renderer = filter.GetComponent<MeshRenderer>();
+
+                int nIndices = materialsIndices.Length;
+                int nKnownMaterials = m_materials.Length;
+
+                Material[] sharedMaterials = new Material[nIndices];
+
+                for (int sharedMatIndex = 0; sharedMatIndex < nIndices; sharedMatIndex++)
+                {
+                    int materialIndex = materialsIndices[sharedMatIndex];
+                    if ((materialIndex >= 0) & (materialIndex < nKnownMaterials))
+                    {
+                        sharedMaterials[sharedMatIndex] = m_materials[materialIndex];
+                    }
+                    else
+                    {
+                        sharedMaterials[sharedMatIndex] = NewMaterial(baseMaterial);
+                    }
+                }
+                renderer.sharedMaterials = sharedMaterials;
+            }
 
             /*BoxCollider boxCollider = node.GetComponent<BoxCollider>();
             Vector3 center = renderer.bounds.center;
