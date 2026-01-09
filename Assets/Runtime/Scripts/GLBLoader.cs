@@ -1208,7 +1208,7 @@ namespace VoyageVoyage
 
         }
 
-        // Spatial mesh splitting based on splerger algorithm
+        // Array-based spatial mesh splitting for Udon compatibility (no generics)
         Mesh[] SplitMeshSpatially(Mesh sourceMesh, string baseName)
         {
             int vertCount = sourceMesh.vertexCount;
@@ -1223,6 +1223,7 @@ namespace VoyageVoyage
             int xSplits = Mathf.Max(1, Mathf.CeilToInt(size.x / GRID_CELL_SIZE));
             int ySplits = Mathf.Max(1, Mathf.CeilToInt(size.y / GRID_CELL_SIZE));
             int zSplits = Mathf.Max(1, Mathf.CeilToInt(size.z / GRID_CELL_SIZE));
+            int totalCells = xSplits * ySplits * zSplits;
 
             Vector3 min = bounds.min;
             Vector3 cellSize = new Vector3(size.x / xSplits, size.y / ySplits, size.z / zSplits);
@@ -1238,17 +1239,20 @@ namespace VoyageVoyage
             bool hasTangents = tangents != null && tangents.Length > 0;
             bool hasColors = colors != null && colors.Length > 0;
 
-            System.Collections.Generic.List<Mesh> chunks = new System.Collections.Generic.List<Mesh>();
+            // Dynamic array for chunks
+            Mesh[] chunks = new Mesh[0];
+            int chunkCount = 0;
 
             // Process each submesh separately to preserve materials
             for (int subMeshIndex = 0; subMeshIndex < sourceMesh.subMeshCount; subMeshIndex++)
             {
                 int[] sourceTriangles = sourceMesh.GetTriangles(subMeshIndex);
-
-                // Group triangles by grid cell
-                System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<int>> cellTriangles = 
-                    new System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<int>>();
-
+                
+                // Array-based grouping: [cellIndex][triangleIndices...]
+                // First pass: count triangles per cell
+                int[] cellTriangleCounts = new int[totalCells];
+                int[] triangleCellAssignments = new int[sourceTriangles.Length / 3];
+                
                 for (int t = 0; t < sourceTriangles.Length; t += 3)
                 {
                     int i0 = sourceTriangles[t];
@@ -1264,61 +1268,98 @@ namespace VoyageVoyage
                     int z = Mathf.Clamp((int)((center.z - min.z) / cellSize.z), 0, zSplits - 1);
                     int cellIndex = x + y * xSplits + z * xSplits * ySplits;
 
-                    if (!cellTriangles.ContainsKey(cellIndex))
-                    {
-                        cellTriangles[cellIndex] = new System.Collections.Generic.List<int>();
-                    }
-                    cellTriangles[cellIndex].Add(i0);
-                    cellTriangles[cellIndex].Add(i1);
-                    cellTriangles[cellIndex].Add(i2);
+                    triangleCellAssignments[t / 3] = cellIndex;
+                    cellTriangleCounts[cellIndex]++;
                 }
 
-                // Create mesh chunks from grid cells
-                foreach (var kvp in cellTriangles)
+                // Create chunks for non-empty cells
+                for (int cellIndex = 0; cellIndex < totalCells; cellIndex++)
                 {
-                    System.Collections.Generic.List<int> triangleIndices = kvp.Value;
-                    if (triangleIndices.Count == 0) continue;
+                    int triCount = cellTriangleCounts[cellIndex];
+                    if (triCount == 0) continue;
 
-                    // Build unique vertex list for this chunk
-                    System.Collections.Generic.Dictionary<int, int> vertexRemap = new System.Collections.Generic.Dictionary<int, int>();
-                    System.Collections.Generic.List<Vector3> chunkVerts = new System.Collections.Generic.List<Vector3>();
-                    System.Collections.Generic.List<Vector3> chunkNormals = new System.Collections.Generic.List<Vector3>();
-                    System.Collections.Generic.List<Vector2> chunkUV = new System.Collections.Generic.List<Vector2>();
-                    System.Collections.Generic.List<Vector4> chunkTangents = new System.Collections.Generic.List<Vector4>();
-                    System.Collections.Generic.List<Color> chunkColors = new System.Collections.Generic.List<Color>();
-                    System.Collections.Generic.List<int> chunkTriangles = new System.Collections.Generic.List<int>();
-
-                    for (int i = 0; i < triangleIndices.Count; i++)
+                    // Gather triangle indices for this cell
+                    int[] cellTriangleIndices = new int[triCount * 3];
+                    int writeIdx = 0;
+                    
+                    for (int t = 0; t < sourceTriangles.Length; t += 3)
                     {
-                        int oldIndex = triangleIndices[i];
-                        if (!vertexRemap.ContainsKey(oldIndex))
+                        if (triangleCellAssignments[t / 3] == cellIndex)
                         {
-                            int newIndex = chunkVerts.Count;
-                            vertexRemap[oldIndex] = newIndex;
-                            chunkVerts.Add(vertices[oldIndex]);
-                            if (hasNormals) chunkNormals.Add(normals[oldIndex]);
-                            if (hasUV) chunkUV.Add(uv[oldIndex]);
-                            if (hasTangents) chunkTangents.Add(tangents[oldIndex]);
-                            if (hasColors) chunkColors.Add(colors[oldIndex]);
+                            cellTriangleIndices[writeIdx++] = sourceTriangles[t];
+                            cellTriangleIndices[writeIdx++] = sourceTriangles[t + 1];
+                            cellTriangleIndices[writeIdx++] = sourceTriangles[t + 2];
                         }
-                        chunkTriangles.Add(vertexRemap[oldIndex]);
+                    }
+
+                    // Build unique vertex list for this chunk using array-based remapping
+                    int maxVertIndex = -1;
+                    for (int i = 0; i < cellTriangleIndices.Length; i++)
+                    {
+                        if (cellTriangleIndices[i] > maxVertIndex) maxVertIndex = cellTriangleIndices[i];
+                    }
+                    
+                    int[] vertexRemap = new int[maxVertIndex + 1];
+                    for (int i = 0; i <= maxVertIndex; i++) vertexRemap[i] = -1;
+
+                    // Count unique vertices
+                    int uniqueVertCount = 0;
+                    for (int i = 0; i < cellTriangleIndices.Length; i++)
+                    {
+                        int oldIndex = cellTriangleIndices[i];
+                        if (vertexRemap[oldIndex] == -1)
+                        {
+                            vertexRemap[oldIndex] = uniqueVertCount;
+                            uniqueVertCount++;
+                        }
+                    }
+
+                    // Allocate chunk data
+                    Vector3[] chunkVerts = new Vector3[uniqueVertCount];
+                    Vector3[] chunkNormals = hasNormals ? new Vector3[uniqueVertCount] : null;
+                    Vector2[] chunkUV = hasUV ? new Vector2[uniqueVertCount] : null;
+                    Vector4[] chunkTangents = hasTangents ? new Vector4[uniqueVertCount] : null;
+                    Color[] chunkColors = hasColors ? new Color[uniqueVertCount] : null;
+                    int[] chunkTriangles = new int[cellTriangleIndices.Length];
+
+                    // Fill vertex data and remap triangles
+                    for (int i = 0; i < cellTriangleIndices.Length; i++)
+                    {
+                        int oldIndex = cellTriangleIndices[i];
+                        int newIndex = vertexRemap[oldIndex];
+                        
+                        if (i == 0 || cellTriangleIndices[i] != cellTriangleIndices[i-1] || i % 3 == 0)
+                        {
+                            chunkVerts[newIndex] = vertices[oldIndex];
+                            if (hasNormals) chunkNormals[newIndex] = normals[oldIndex];
+                            if (hasUV) chunkUV[newIndex] = uv[oldIndex];
+                            if (hasTangents) chunkTangents[newIndex] = tangents[oldIndex];
+                            if (hasColors) chunkColors[newIndex] = colors[oldIndex];
+                        }
+                        
+                        chunkTriangles[i] = newIndex;
                     }
 
                     // Create chunk mesh
                     Mesh chunkMesh = new Mesh();
-                    chunkMesh.name = $"{baseName}_chunk{chunks.Count}_sub{subMeshIndex}";
-                    chunkMesh.vertices = chunkVerts.ToArray();
-                    if (hasNormals) chunkMesh.normals = chunkNormals.ToArray();
-                    if (hasUV) chunkMesh.uv = chunkUV.ToArray();
-                    if (hasTangents) chunkMesh.tangents = chunkTangents.ToArray();
-                    if (hasColors) chunkMesh.colors = chunkColors.ToArray();
-                    chunkMesh.triangles = chunkTriangles.ToArray();
+                    chunkMesh.name = baseName + "_c" + chunkCount + "_s" + subMeshIndex;
+                    chunkMesh.vertices = chunkVerts;
+                    if (hasNormals) chunkMesh.normals = chunkNormals;
+                    if (hasUV) chunkMesh.uv = chunkUV;
+                    if (hasTangents) chunkMesh.tangents = chunkTangents;
+                    if (hasColors) chunkMesh.colors = chunkColors;
+                    chunkMesh.triangles = chunkTriangles;
 
-                    chunks.Add(chunkMesh);
+                    // Add to chunks array
+                    Mesh[] newChunks = new Mesh[chunkCount + 1];
+                    for (int i = 0; i < chunkCount; i++) newChunks[i] = chunks[i];
+                    newChunks[chunkCount] = chunkMesh;
+                    chunks = newChunks;
+                    chunkCount++;
                 }
             }
 
-            return chunks.ToArray();
+            return chunks;
         }
 
         bool LoadMesh(DataDictionary meshInfo, out string name, out Mesh mesh, out int[] matIndices)
