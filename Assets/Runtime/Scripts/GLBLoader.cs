@@ -1375,10 +1375,9 @@ namespace VoyageVoyage
 
             //ReportInfo("LoadMesh", $"$Mesh : {name} nSubmeshes : {nSubmeshes}");
 
-            // Never combine - set submeshes directly to avoid GPU stall
+            // Single submesh - direct assignment (no merge overhead)
             if (nSubmeshes == 1)
             {
-                // Single submesh - direct assignment
                 Mesh subMesh = LoadMeshFrom(submeshesInfo, 0);
                 mesh.indexFormat = (subMesh.vertexCount < 65535) ? UnityEngine.Rendering.IndexFormat.UInt16 : UnityEngine.Rendering.IndexFormat.UInt32;
                 mesh.vertices = subMesh.vertices;
@@ -1389,63 +1388,60 @@ namespace VoyageVoyage
                 mesh.name = name;
                 return true;
             }
-            else
+
+            // Multiple submeshes - manual merge
+            // First pass: count total vertices
+            int totalVerts = 0;
+            Mesh[] subMeshes = new Mesh[nSubmeshes];
+            for (int s = 0; s < nSubmeshes; s++)
             {
-                // Multiple submeshes - set as separate submeshes instead of combining
-                Mesh firstSubMesh = LoadMeshFrom(submeshesInfo, 0);
-                int totalVerts = firstSubMesh.vertexCount;
-                
-                // Count total vertices
-                for (int s = 1; s < nSubmeshes; s++)
-                {
-                    Mesh subMesh = LoadMeshFrom(submeshesInfo, s * meshInfoNIndices);
-                    totalVerts += subMesh.vertexCount;
-                }
-                
-                mesh.indexFormat = (totalVerts < 65535) ? UnityEngine.Rendering.IndexFormat.UInt16 : UnityEngine.Rendering.IndexFormat.UInt32;
-                
-                // Merge vertex data manually
-                Vector3[] allVertices = new Vector3[totalVerts];
-                Vector3[] allNormals = new Vector3[totalVerts];
-                Vector4[] allTangents = new Vector4[totalVerts];
-                Vector2[] allUV = new Vector2[totalVerts];
-                
-                int vertOffset = 0;
-                mesh.subMeshCount = nSubmeshes;
-                
-                for (int s = 0; s < nSubmeshes; s++)
-                {
-                    Mesh subMesh = LoadMeshFrom(submeshesInfo, s * meshInfoNIndices);
-                    Vector3[] verts = subMesh.vertices;
-                    int vertCount = verts.Length;
-                    
-                    // Copy vertex data
-                    verts.CopyTo(allVertices, vertOffset);
-                    if (subMesh.normals.Length > 0) subMesh.normals.CopyTo(allNormals, vertOffset);
-                    if (subMesh.tangents.Length > 0) subMesh.tangents.CopyTo(allTangents, vertOffset);
-                    if (subMesh.uv.Length > 0) subMesh.uv.CopyTo(allUV, vertOffset);
-                    
-                    // Offset triangle indices and set submesh
-                    int[] tris = subMesh.triangles;
-                    if (vertOffset > 0)
-                    {
-                        for (int i = 0; i < tris.Length; i++)
-                        {
-                            tris[i] += vertOffset;
-                        }
-                    }
-                    mesh.SetTriangles(tris, s);
-                    
-                    vertOffset += vertCount;
-                }
-                
-                mesh.vertices = allVertices;
-                mesh.normals = allNormals;
-                mesh.tangents = allTangents;
-                mesh.uv = allUV;
-                mesh.name = name;
-                return true;
+                subMeshes[s] = LoadMeshFrom(submeshesInfo, s * meshInfoNIndices);
+                totalVerts += subMeshes[s].vertexCount;
             }
+            
+            mesh.indexFormat = (totalVerts < 65535) ? UnityEngine.Rendering.IndexFormat.UInt16 : UnityEngine.Rendering.IndexFormat.UInt32;
+            
+            // Allocate combined arrays
+            Vector3[] allVertices = new Vector3[totalVerts];
+            Vector3[] allNormals = new Vector3[totalVerts];
+            Vector4[] allTangents = new Vector4[totalVerts];
+            Vector2[] allUV = new Vector2[totalVerts];
+            
+            int vertOffset = 0;
+            mesh.subMeshCount = nSubmeshes;
+            
+            // Second pass: copy and set submeshes
+            for (int s = 0; s < nSubmeshes; s++)
+            {
+                Mesh subMesh = subMeshes[s];
+                int vertCount = subMesh.vertexCount;
+                
+                // Use Array.Copy for faster bulk copy
+                System.Array.Copy(subMesh.vertices, 0, allVertices, vertOffset, vertCount);
+                if (subMesh.normals.Length > 0) System.Array.Copy(subMesh.normals, 0, allNormals, vertOffset, vertCount);
+                if (subMesh.tangents.Length > 0) System.Array.Copy(subMesh.tangents, 0, allTangents, vertOffset, vertCount);
+                if (subMesh.uv.Length > 0) System.Array.Copy(subMesh.uv, 0, allUV, vertOffset, vertCount);
+                
+                // Offset and set triangles
+                int[] tris = subMesh.triangles;
+                if (vertOffset > 0)
+                {
+                    for (int i = 0; i < tris.Length; i++)
+                    {
+                        tris[i] += vertOffset;
+                    }
+                }
+                mesh.SetTriangles(tris, s);
+                
+                vertOffset += vertCount;
+            }
+            
+            mesh.vertices = allVertices;
+            mesh.normals = allNormals;
+            mesh.tangents = allTangents;
+            mesh.uv = allUV;
+            mesh.name = name;
+            return true;
         }
 
         int[] GetBufferViewInfo(DataDictionary bufferViewInfo)
