@@ -1375,9 +1375,10 @@ namespace VoyageVoyage
 
             //ReportInfo("LoadMesh", $"$Mesh : {name} nSubmeshes : {nSubmeshes}");
 
-            // For single submesh, avoid CombineMeshes overhead
+            // Never combine - set submeshes directly to avoid GPU stall
             if (nSubmeshes == 1)
             {
+                // Single submesh - direct assignment
                 Mesh subMesh = LoadMeshFrom(submeshesInfo, 0);
                 mesh.indexFormat = (subMesh.vertexCount < 65535) ? UnityEngine.Rendering.IndexFormat.UInt16 : UnityEngine.Rendering.IndexFormat.UInt32;
                 mesh.vertices = subMesh.vertices;
@@ -1388,25 +1389,63 @@ namespace VoyageVoyage
                 mesh.name = name;
                 return true;
             }
-
-            // Multiple submeshes - use CombineMeshes
-            int indicesSum = 0;
-            CombineInstance[] instances = new CombineInstance[nSubmeshes];
-            for (int s = 0; s < nSubmeshes; s++)
+            else
             {
-                CombineInstance instance = instances[s];
-                instance.transform = Matrix4x4.identity;
-                instance.mesh = LoadMeshFrom(submeshesInfo, s * meshInfoNIndices);
-                instance.subMeshIndex = 0;
-                indicesSum += instance.mesh.vertexCount;
-                instances[s] = instance;
+                // Multiple submeshes - set as separate submeshes instead of combining
+                Mesh firstSubMesh = LoadMeshFrom(submeshesInfo, 0);
+                int totalVerts = firstSubMesh.vertexCount;
+                
+                // Count total vertices
+                for (int s = 1; s < nSubmeshes; s++)
+                {
+                    Mesh subMesh = LoadMeshFrom(submeshesInfo, s * meshInfoNIndices);
+                    totalVerts += subMesh.vertexCount;
+                }
+                
+                mesh.indexFormat = (totalVerts < 65535) ? UnityEngine.Rendering.IndexFormat.UInt16 : UnityEngine.Rendering.IndexFormat.UInt32;
+                
+                // Merge vertex data manually
+                Vector3[] allVertices = new Vector3[totalVerts];
+                Vector3[] allNormals = new Vector3[totalVerts];
+                Vector4[] allTangents = new Vector4[totalVerts];
+                Vector2[] allUV = new Vector2[totalVerts];
+                
+                int vertOffset = 0;
+                mesh.subMeshCount = nSubmeshes;
+                
+                for (int s = 0; s < nSubmeshes; s++)
+                {
+                    Mesh subMesh = LoadMeshFrom(submeshesInfo, s * meshInfoNIndices);
+                    Vector3[] verts = subMesh.vertices;
+                    int vertCount = verts.Length;
+                    
+                    // Copy vertex data
+                    verts.CopyTo(allVertices, vertOffset);
+                    if (subMesh.normals.Length > 0) subMesh.normals.CopyTo(allNormals, vertOffset);
+                    if (subMesh.tangents.Length > 0) subMesh.tangents.CopyTo(allTangents, vertOffset);
+                    if (subMesh.uv.Length > 0) subMesh.uv.CopyTo(allUV, vertOffset);
+                    
+                    // Offset triangle indices and set submesh
+                    int[] tris = subMesh.triangles;
+                    if (vertOffset > 0)
+                    {
+                        for (int i = 0; i < tris.Length; i++)
+                        {
+                            tris[i] += vertOffset;
+                        }
+                    }
+                    mesh.SetTriangles(tris, s);
+                    
+                    vertOffset += vertCount;
+                }
+                
+                mesh.vertices = allVertices;
+                mesh.normals = allNormals;
+                mesh.tangents = allTangents;
+                mesh.uv = allUV;
+                mesh.name = name;
+                return true;
             }
-
-            mesh.indexFormat = (indicesSum < 65535) ? UnityEngine.Rendering.IndexFormat.UInt16 : UnityEngine.Rendering.IndexFormat.UInt32;
-
-            mesh.CombineMeshes(instances, false);
-            mesh.name = name;
-            return true;
         }
 
         int[] GetBufferViewInfo(DataDictionary bufferViewInfo)
