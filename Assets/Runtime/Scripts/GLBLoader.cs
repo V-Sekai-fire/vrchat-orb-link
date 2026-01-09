@@ -1375,6 +1375,21 @@ namespace VoyageVoyage
 
             //ReportInfo("LoadMesh", $"$Mesh : {name} nSubmeshes : {nSubmeshes}");
 
+            // For single submesh, avoid CombineMeshes overhead
+            if (nSubmeshes == 1)
+            {
+                Mesh subMesh = LoadMeshFrom(submeshesInfo, 0);
+                mesh.indexFormat = (subMesh.vertexCount < 65535) ? UnityEngine.Rendering.IndexFormat.UInt16 : UnityEngine.Rendering.IndexFormat.UInt32;
+                mesh.vertices = subMesh.vertices;
+                mesh.normals = subMesh.normals;
+                mesh.tangents = subMesh.tangents;
+                mesh.uv = subMesh.uv;
+                mesh.triangles = subMesh.triangles;
+                mesh.name = name;
+                return true;
+            }
+
+            // Multiple submeshes - use CombineMeshes
             int indicesSum = 0;
             CombineInstance[] instances = new CombineInstance[nSubmeshes];
             for (int s = 0; s < nSubmeshes; s++)
