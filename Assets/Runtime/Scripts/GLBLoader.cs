@@ -49,6 +49,12 @@ namespace VoyageVoyage
         long[] m_stats = new long[statsFieldCount];
         GameObject[] m_nodes = new GameObject[0];
 
+        // Stripe filtering per loader instance (for staggered multi-instance setups)
+        public bool enableStripeFilter = true;
+        public int stripeModulo = 4;
+        public int stripeIndex = 0;
+        public Vector3 loaderOffset = Vector3.zero;
+
         const int errorValue = -2;
         const int sectionComplete = -1;
 
@@ -1272,9 +1278,20 @@ namespace VoyageVoyage
                     cellTriangleCounts[cellIndex]++;
                 }
 
-                // Create chunks for non-empty cells
+                // Create chunks for non-empty cells (optional Spegler-style stripe)
                 for (int cellIndex = 0; cellIndex < totalCells; cellIndex++)
                 {
+                    if (enableStripeFilter && stripeModulo > 0)
+                    {
+                        // Spegler stripe key: sum of grid coordinates modulo stripe count
+                        int z = cellIndex / (xSplits * ySplits);
+                        int rem = cellIndex - z * xSplits * ySplits;
+                        int y = rem / xSplits;
+                        int x = rem - y * xSplits;
+                        int stripeKey = (x + y + z) % stripeModulo;
+                        if (stripeKey != stripeIndex) continue;
+                    }
+
                     int triCount = cellTriangleCounts[cellIndex];
                     if (triCount == 0) continue;
 
@@ -1786,6 +1803,12 @@ namespace VoyageVoyage
                 transform.localPosition = position;
                 transform.localRotation = rotation;
                 transform.localScale = scale;
+
+                if (enableStripeFilter)
+                {
+                    // Stagger this instance in world/parent space for multi-load grids
+                    transform.localPosition += loaderOffset;
+                }
 
                 /* Parent the children */
                 int nChildren = children.Length;
