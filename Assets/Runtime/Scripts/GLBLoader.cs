@@ -51,9 +51,24 @@ namespace VoyageVoyage
 
         // Stripe filtering per loader instance (for staggered multi-instance setups)
         public bool enableStripeFilter = true;
-        public int stripeModulo = 4;
+        public int stripeModulo = 8; // default loads 1/8 per instance; disable or set to 1 for full load
         public int stripeIndex = 0;
         public Vector3 loaderOffset = Vector3.zero;
+
+        // Simple in-progress indicator
+        public bool showProgressIndicator = true;
+        bool isParsing = false;
+
+        // Stage timing logs
+        public bool logStageTiming = true;
+        float parseStartTime = 0f;
+        float stateStartTime = 0f;
+
+        // Staggered start to reduce concurrent Udon load
+        public bool autoDownload = true;
+        public float startDelaySeconds = 2f;
+        bool downloadScheduled = false;
+        float downloadTriggerTime = 0f;
 
         const int errorValue = -2;
         const int sectionComplete = -1;
@@ -302,6 +317,36 @@ namespace VoyageVoyage
             }
         }
 
+        string GetStateName(int stateIndex)
+        {
+            switch (stateIndex)
+            {
+                case 0: return "ParseMainData";
+                case 1: return "ParseJsonData";
+                case 2: return "ParseAssetData";
+                case 3: return "ParseBufferViews";
+                case 4: return "ParseAccessors";
+                case 5: return "ParseImages";
+                case 6: return "ParseSamplers";
+                case 7: return "ParseTextures";
+                case 8: return "ParseMaterials";
+                case 9: return "ParseMeshes";
+                case 10: return "SpawnNodes";
+                case 11: return "SetupNodes";
+                case 12: return "SetupScenes";
+                case 13: return "SelectScene";
+                default: return "Done";
+            }
+        }
+
+        void LogStageDuration(int stateIndex)
+        {
+            if (!logStageTiming) return;
+            float duration = Time.realtimeSinceStartup - stateStartTime;
+            string stateName = GetStateName(stateIndex);
+            ReportInfo("StageTiming", $"{stateName} duration {duration:0.000}s");
+        }
+
         void StartParsing()
         {
 
@@ -315,6 +360,9 @@ namespace VoyageVoyage
         {
             Clear();
             glb = glbData;
+            parseStartTime = Time.realtimeSinceStartup;
+            stateStartTime = parseStartTime;
+            ToggleProgressIndicator(true);
             StartParsing();
         }
 
@@ -354,6 +402,14 @@ namespace VoyageVoyage
             Debug.Log($"<color=green>[{tag}] {message}</color>");
         }
 
+        void ToggleProgressIndicator(bool on)
+        {
+            isParsing = on;
+            if (!showProgressIndicator) return;
+            if (temporaryRenderer == null) return;
+            temporaryRenderer.enabled = on;
+        }
+
         public override void OnStringLoadSuccess(IVRCStringDownload result)
         {
             //ReportInfo("OnStringLoadSuccess", $"Time : {Time.realtimeSinceStartup}");
@@ -390,7 +446,18 @@ namespace VoyageVoyage
 
             GenerateMaterialsExtensionsDictionary();
 
-            //DownloadModel();
+            if (autoDownload)
+            {
+                if (startDelaySeconds > 0f)
+                {
+                    downloadScheduled = true;
+                    downloadTriggerTime = Time.realtimeSinceStartup + startDelaySeconds;
+                }
+                else
+                {
+                    DownloadModel();
+                }
+            }
         }
 
         void DownloadModel()
@@ -1249,6 +1316,11 @@ namespace VoyageVoyage
             Mesh[] chunks = new Mesh[0];
             int chunkCount = 0;
 
+            int effectiveStripeModulo = Mathf.Max(1, stripeModulo);
+            int effectiveStripeIndex = stripeIndex % effectiveStripeModulo;
+            if (effectiveStripeIndex < 0) effectiveStripeIndex += effectiveStripeModulo;
+            bool stripeActive = enableStripeFilter && effectiveStripeModulo > 0;
+
             // Process each submesh separately to preserve materials
             for (int subMeshIndex = 0; subMeshIndex < sourceMesh.subMeshCount; subMeshIndex++)
             {
@@ -1281,15 +1353,15 @@ namespace VoyageVoyage
                 // Create chunks for non-empty cells (optional Spegler-style stripe)
                 for (int cellIndex = 0; cellIndex < totalCells; cellIndex++)
                 {
-                    if (enableStripeFilter && stripeModulo > 0)
+                    if (stripeActive)
                     {
                         // Spegler stripe key: sum of grid coordinates modulo stripe count
                         int z = cellIndex / (xSplits * ySplits);
                         int rem = cellIndex - z * xSplits * ySplits;
                         int y = rem / xSplits;
                         int x = rem - y * xSplits;
-                        int stripeKey = (x + y + z) % stripeModulo;
-                        if (stripeKey != stripeIndex) continue;
+                        int stripeKey = (x + y + z) % effectiveStripeModulo;
+                        if (stripeKey != effectiveStripeIndex) continue;
                     }
 
                     int triCount = cellTriangleCounts[cellIndex];
@@ -2551,6 +2623,7 @@ namespace VoyageVoyage
         {
             NotifyState("ParseError");
             ReportError("ParseError", "Parse error !");
+            ToggleProgressIndicator(false);
             enabled = false;
         }
 
@@ -2558,6 +2631,13 @@ namespace VoyageVoyage
         {
             NotifyState("SceneLoaded");
             ReportInfo("ParseComplete", "Parse complete !");
+            LogStageDuration(currentState);
+            if (logStageTiming)
+            {
+                float total = Time.realtimeSinceStartup - parseStartTime;
+                ReportInfo("StageTiming", $"ParseTotal duration {total:0.000}s");
+            }
+            ToggleProgressIndicator(false);
             enabled = false;
         }
 
@@ -2592,8 +2672,11 @@ namespace VoyageVoyage
 
             if (currentIndex == sectionComplete)
             {
+                LogStageDuration(currentState);
                 currentState += 1;
                 currentIndex = 0;
+                stateStartTime = Time.realtimeSinceStartup;
+                // No ISO datetime; only duration logs
             }
         }
 
@@ -2617,6 +2700,11 @@ namespace VoyageVoyage
 
         private void Update()
         {
+            if (downloadScheduled && Time.realtimeSinceStartup >= downloadTriggerTime)
+            {
+                downloadScheduled = false;
+                DownloadModel();
+            }
             ParseGLB();
         }
 
