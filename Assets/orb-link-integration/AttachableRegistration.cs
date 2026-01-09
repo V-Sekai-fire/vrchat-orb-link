@@ -25,37 +25,22 @@ namespace net.fushizen.attachable
     /// </summary>
     public class AttachableRegistration : UdonSharpBehaviour
     {
-        [SerializeField] private AttachablesGlobalTracking globalTracking;
+        // Attachable support removed
+        // [SerializeField] private AttachablesGlobalTracking globalTracking;
 
-        void Start()
-        {
-            // Find AttachablesGlobalTracking if not assigned
-            if (globalTracking == null)
-            {
-                globalTracking = FindObjectOfType<AttachablesGlobalTracking>();
-            }
-        }
+        // void Start()
+        // {
+        //     // Find AttachablesGlobalTracking if not assigned
+        //     if (globalTracking == null)
+        //     {
+        //         globalTracking = FindObjectOfType<AttachablesGlobalTracking>();
+        //     }
+        // }
 
         public void RegisterOrb(GameObject orb)
         {
-            if (globalTracking == null)
-            {
-                Debug.LogWarning("[AttachableRegistration] AttachablesGlobalTracking not found");
-                return;
-            }
-
-            // Get the Attachable component
-            Attachable attachable = orb.GetComponent<Attachable>();
-            if (attachable == null)
-            {
-                Debug.LogError($"[AttachableRegistration] Orb {orb.name} has no Attachable component");
-                return;
-            }
-
-            // Register the attachable with the global tracking system
-            globalTracking._a_EnableTracking(attachable);
-            
-            Debug.Log($"[AttachableRegistration] Registered orb {orb.name} with global tracking");
+            // Attachable support removed
+            Debug.Log($"[AttachableRegistration] Attachable support disabled for orb {orb.name}");
         }
     }
 }

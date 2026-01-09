@@ -56,29 +56,30 @@ namespace net.fushizen.attachable
             // Find all DynamicOrb components and check their status
             DynamicOrb[] orbs = orbParent.GetComponentsInChildren<DynamicOrb>();
             
-            foreach (DynamicOrb orb in orbs)
-            {
-                Attachable attachable = orb.GetComponent<Attachable>();
-                if (attachable == null) continue;
+            // Attachable support removed - no longer checking attachable states
+            // foreach (DynamicOrb orb in orbs)
+            // {
+            //     Attachable attachable = orb.GetComponent<Attachable>();
+            //     if (attachable == null) continue;
 
-                // Check if orb has been inactive (not tracking and not held)
-                bool isTracking = IsOrbTracking(attachable);
-                bool isHeld = attachable.IsPickedUp;
+            //     // Check if orb has been inactive (not tracking and not held)
+            //     bool isTracking = IsOrbTracking(attachable);
+            //     bool isHeld = attachable.IsPickedUp;
 
-                if (!isTracking && !isHeld)
-                {
-                    // Could implement respawn or cleanup here based on settings
-                    // For now, just log the state
-                }
-            }
+            //     if (!isTracking && !isHeld)
+            //     {
+            //         // Could implement respawn or cleanup here based on settings
+            //         // For now, just log the state
+            //     }
+            // }
         }
 
-        private bool IsOrbTracking(Attachable attachable)
-        {
-            // This is a placeholder - actual tracking state would need to be queried
-            // from the AttachablesGlobalTracking system
-            return false;
-        }
+        // private bool IsOrbTracking(Attachable attachable)
+        // {
+        //     // This is a placeholder - actual tracking state would need to be queried
+        //     // from the AttachablesGlobalTracking system
+        //     return false;
+        // }
 
         /// <summary>
         /// Clears all dynamically-loaded orbs from the world

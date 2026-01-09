@@ -1,0 +1,39 @@
+{
+	"name": "com.vrmc.gltf",
+	"version": "0.128.1",
+	"displayName": "UniGLTF",
+	"description": "GLTF importer and exporter",
+	"unity": "2021.3",
+	"keywords": [
+		"gltf"
+	],
+	"author": {
+		"name": "VRM Consortium"
+	},
+	"dependencies": {
+		"com.unity.modules.animation": "1.0.0"
+	},
+	"samples": [
+		{
+			"displayName": "GltfViewer",
+			"description": "UniGLTF runtime loader sample",
+			"path": "Samples~/GltfViewer"
+		}
+	],
+	"publishConfig": {
+		"registry": "https://package.openupm.com"
+	},
+	"vpmDependencies": {},
+	"legacyFolders": {
+		"Assets/UniGLTF": "49e44e391b2db4e41bd32306cf7c7af5",
+		"Assets/MeshUtility": "f11c20c3f50e40b4f8f6259f8e0886e0",
+		"Assets/VRMShaders": "503ae90aee4d0224db69e4e74762223b"
+	},
+	"legacyFiles": {
+		"CombineMeshesAndSubMeshes.cs": null
+	},
+	"legacyPackages": [
+		"com.vrmc.vrmshaders"
+	],
+	"url": "https://esperecyan.github.io/VRMConverterForVRChat/packages/com.vrmc.gltf-0.128.1.zip"
+}

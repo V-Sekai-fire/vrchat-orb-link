@@ -1,0 +1,20 @@
+{
+    "name": "orb-link-integration",
+    "rootNamespace": "",
+    "references": [
+        "io.github.vr-voyage.vrchat.glb-loader",
+        "UdonSharp",
+        "Unity.TextMeshPro",
+        "VRC.SDKBase",
+        "VRC.SDK3"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

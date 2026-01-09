@@ -1,6 +1,7 @@
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
+using VoyageVoyage;
 
 namespace net.fushizen.attachable
 {
