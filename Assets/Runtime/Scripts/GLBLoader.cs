@@ -2730,7 +2730,7 @@ namespace VoyageVoyage
 
             if (!StillHaveTime())
             {
-                limit = Time.realtimeSinceStartup + Time.fixedDeltaTime / 2;
+                limit = Time.realtimeSinceStartup + Time.fixedDeltaTime / 4; // Reduced from /2 to /4 for smoother spreading
             }
 
             //ReportInfo("ParseGLB", $"CurrentState : {currentState} - Index : {currentIndex}");
