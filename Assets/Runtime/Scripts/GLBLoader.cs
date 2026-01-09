@@ -1555,7 +1555,10 @@ namespace VoyageVoyage
                 bool gotAMesh = LoadMesh((DataDictionary)meshInfoToken, out string name, out Mesh mesh, out int[] materialsIndices);
                 if (!gotAMesh) continue;
 
-                // Store mesh info (chunking happens later during SetupMesh)
+                // Split mesh into spatial chunks if needed
+                Mesh[] chunks = SplitMeshSpatially(mesh, name);
+                m_meshChunks[m] = chunks;
+
                 meshesInfo[m] = new object[] { mesh, materialsIndices };
                 CountNewTriangles(mesh.triangles.LongLength);
 
@@ -1625,34 +1628,73 @@ namespace VoyageVoyage
             int[] materialsIndices = (int[])meshInfo[1];
 
             if (mesh == null) return;
-            mesh.RecalculateBounds();
 
-            // Simple approach: use original mesh directly
-            // Chunking would require async spawning which complicates state machine
-            MeshFilter filter = node.GetComponent<MeshFilter>();
-            filter.sharedMesh = mesh;
+            // Check if mesh was spatially chunked
+            bool hasChunks = (meshIndex < m_meshChunks.Length) && (m_meshChunks[meshIndex] != null) && (m_meshChunks[meshIndex].Length > 1);
 
-            if (materialsIndices == null) return;
-            MeshRenderer renderer = filter.GetComponent<MeshRenderer>();
-
-            int nIndices = materialsIndices.Length;
-            int nKnownMaterials = m_materials.Length;
-
-            Material[] sharedMaterials = new Material[nIndices];
-
-            for (int sharedMatIndex = 0; sharedMatIndex < nIndices; sharedMatIndex++)
+            if (hasChunks)
             {
-                int materialIndex = materialsIndices[sharedMatIndex];
-                if ((materialIndex >= 0) & (materialIndex < nKnownMaterials))
+                // Spawn chunks as child GameObjects
+                Mesh[] chunks = m_meshChunks[meshIndex];
+                for (int c = 0; c < chunks.Length; c++)
                 {
-                    sharedMaterials[sharedMatIndex] = m_materials[materialIndex];
-                }
-                else
-                {
-                    sharedMaterials[sharedMatIndex] = NewMaterial(baseMaterial);
+                    GameObject chunkNode = Instantiate(nodePrefab, node.transform);
+                    chunkNode.name = node.name + "_c" + c;
+
+                    Mesh chunkMesh = chunks[c];
+                    chunkMesh.RecalculateBounds();
+
+                    MeshFilter chunkFilter = chunkNode.GetComponent<MeshFilter>();
+                    chunkFilter.sharedMesh = chunkMesh;
+
+                    MeshRenderer chunkRenderer = chunkFilter.GetComponent<MeshRenderer>();
+                    int nIndices = materialsIndices.Length;
+                    int nKnownMaterials = m_materials.Length;
+                    Material[] sharedMaterials = new Material[nIndices];
+
+                    for (int sharedMatIndex = 0; sharedMatIndex < nIndices; sharedMatIndex++)
+                    {
+                        int materialIndex = materialsIndices[sharedMatIndex];
+                        if ((materialIndex >= 0) & (materialIndex < nKnownMaterials))
+                        {
+                            sharedMaterials[sharedMatIndex] = m_materials[materialIndex];
+                        }
+                        else
+                        {
+                            sharedMaterials[sharedMatIndex] = NewMaterial(baseMaterial);
+                        }
+                    }
+                    chunkRenderer.sharedMaterials = sharedMaterials;
                 }
             }
-            renderer.sharedMaterials = sharedMaterials;
+            else
+            {
+                // Single mesh - use original
+                mesh.RecalculateBounds();
+                MeshFilter filter = node.GetComponent<MeshFilter>();
+                filter.sharedMesh = mesh;
+
+                if (materialsIndices == null) return;
+                MeshRenderer renderer = filter.GetComponent<MeshRenderer>();
+
+                int nIndices = materialsIndices.Length;
+                int nKnownMaterials = m_materials.Length;
+                Material[] sharedMaterials = new Material[nIndices];
+
+                for (int sharedMatIndex = 0; sharedMatIndex < nIndices; sharedMatIndex++)
+                {
+                    int materialIndex = materialsIndices[sharedMatIndex];
+                    if ((materialIndex >= 0) & (materialIndex < nKnownMaterials))
+                    {
+                        sharedMaterials[sharedMatIndex] = m_materials[materialIndex];
+                    }
+                    else
+                    {
+                        sharedMaterials[sharedMatIndex] = NewMaterial(baseMaterial);
+                    }
+                }
+                renderer.sharedMaterials = sharedMaterials;
+            }
 
             /*BoxCollider boxCollider = node.GetComponent<BoxCollider>();
             Vector3 center = renderer.bounds.center;
