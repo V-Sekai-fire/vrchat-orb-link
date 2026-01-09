@@ -1696,7 +1696,12 @@ namespace VoyageVoyage
                         }
                     }
                     chunkRenderer.sharedMaterials = sharedMaterials;
+                    
+                    // Enable chunk immediately so it appears
+                    chunkNode.SetActive(true);
                 }
+                // Enable parent node after all chunks are added
+                node.SetActive(true);
             }
             else
             {
@@ -1725,6 +1730,9 @@ namespace VoyageVoyage
                     }
                 }
                 renderer.sharedMaterials = sharedMaterials;
+                
+                // Enable node immediately
+                node.SetActive(true);
             }
 
             /*BoxCollider boxCollider = node.GetComponent<BoxCollider>();
@@ -1766,7 +1774,9 @@ namespace VoyageVoyage
                 {
                     return n;
                 }
-                nodesObjects[n] = Instantiate(nodePrefab, mainParent);
+                GameObject newNode = Instantiate(nodePrefab, mainParent);
+                newNode.SetActive(false); // Start disabled, enable when mesh is assigned
+                nodesObjects[n] = newNode;
             }
 
             return sectionComplete;
