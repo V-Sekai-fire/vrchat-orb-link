@@ -100,3 +100,20 @@ SerializedUdonPrograms/
 .vpm/
 packages-lock.json
 
+# Client Simulation
+ClientSimStorage/
+ClientSimUdon/
+
+# Build outputs
+out/
+dist/
+
+# Node/npm (if using any build tools)
+node_modules/
+package-lock.json
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
