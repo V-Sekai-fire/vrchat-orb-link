@@ -1,12 +1,23 @@
 using UdonSharp;
 using UnityEngine;
+using UnityEngine.UI;
 
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
 public class ClearLoadersButton : UdonSharpBehaviour
 {
     [SerializeField] private MultiLoaderManager multiLoaderManager;
+    private Button button;
     
-    public override void Interact()
+    public void Start()
+    {
+        button = GetComponent<Button>();
+        if (button != null)
+        {
+            button.onClick.AddListener(OnClearClick);
+        }
+    }
+    
+    public void OnClearClick()
     {
         if (multiLoaderManager == null)
         {

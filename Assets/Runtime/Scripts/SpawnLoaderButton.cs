@@ -1,13 +1,24 @@
 using UdonSharp;
 using UnityEngine;
+using UnityEngine.UI;
 using VRC.SDKBase;
 
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
 public class SpawnLoaderButton : UdonSharpBehaviour
 {
     [SerializeField] private MultiLoaderManager multiLoaderManager;
+    private Button button;
     
-    public override void Interact()
+    public void Start()
+    {
+        button = GetComponent<Button>();
+        if (button != null)
+        {
+            button.onClick.AddListener(OnSpawnClick);
+        }
+    }
+    
+    public void OnSpawnClick()
     {
         if (multiLoaderManager == null)
         {
