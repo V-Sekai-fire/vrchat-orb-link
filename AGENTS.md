@@ -1,24 +1,18 @@
-# Simple GLB/glTF2 Asset Loading
+# GLB/glTF2 Asset Loading
 
 ## Project Overview
 
-A minimal VRChat world system for loading 3D models (GLB, glTF2) from URLs. Features a floating URL input interface that loads models into the scene.
+Basic VRChat world setup for loading 3D models (GLB, glTF2) using the Voyage GLB loader package as-is.
+
+**Status**: ✅ Basic Setup
 
 ## Architecture
 
 ```
 ┌─────────────────────────────┐
-│     UI Elements             │
-│  - TMP_InputField (URL)     │
-│  - Button (Load)            │
-│  - TextMeshProUGUI (Status) │
-└─────────────┬───────────────┘
-              │
-┌─────────────▼───────────────┐
-│   OrbUIBuilder Script       │
+│     GLBLoaderSetup Script   │
 │  - Instantiates GLB Loader  │
-│  - Handles URL input        │
-│  - Triggers loading         │
+│  - Instantiates URL Canvas  │
 └─────────────┬───────────────┘
               │
 ┌─────────────▼───────────────┐
@@ -30,36 +24,30 @@ A minimal VRChat world system for loading 3D models (GLB, glTF2) from URLs. Feat
 
 ## Design Decisions
 
-1. **Simplicity First**: Minimal viable product - just load GLB from URL
-2. **UI Assignment**: UI elements assigned in inspector rather than procedurally generated
-3. **GLB Loader Integration**: Uses existing Voyage GLB loader for reliability
-4. **No Complex Features**: No caching, cooldowns, or orb spawning - just basic loading
+1. **Use As-Is**: No modifications to the original Voyage GLB loader
+2. **Basic Setup**: Simple instantiation of existing prefabs
+3. **Minimal Code**: Just setup script to instantiate components
 
 ## Core Components
 
-| File                     | Purpose                                       | Lines |
-| ------------------------ | --------------------------------------------- | ----- |
-| `Scenes/OrbUIBuilder.cs` | Main script - instantiates loader, handles UI | 58    |
+| File                            | Purpose                                           | Lines |
+| ------------------------------- | ------------------------------------------------- | ----- |
+| `Scenes/GLBLoaderSetup.cs`      | Setup script to instantiate loader and UI         | 25    |
 
-## UI Layout
+## Implementation Status
 
-```
-┌────────────────────────────────┐
-│ URL: [https://example.com...]  │
-│                     [LOAD]     │
-│ Status: Loading...             │
-└────────────────────────────────┘
-```
+✅ Basic setup script implemented
+✅ GLB loader prefab instantiation
+✅ URL input canvas instantiation
 
 ## Key Features
 
-- **Simple Loading**: Load GLB, glTF2 from URLs
-- **Floating UI**: URL input field for easy model loading
-- **Status Feedback**: Shows loading progress and errors
-- **Default Model**: Pre-loaded with GLTF Duck for testing
+- **Original GLB Loader**: Uses Voyage GLB loader without modifications
+- **URL Input**: Built-in VRCUrlInputField for entering model URLs
+- **Basic Functionality**: Load GLB, glTF2 models from web URLs
 
 ## Integration Points
 
-- **GLB Loader**: Uses `thirdparty/vrchat-glb-loader` package
+- **GLB Loader**: `thirdparty/vrchat-glb-loader` package
 - **VRChat API**: VRCUrl for web loading
 - **Udon System**: UdonSharpBehaviour for VRChat compatibility
