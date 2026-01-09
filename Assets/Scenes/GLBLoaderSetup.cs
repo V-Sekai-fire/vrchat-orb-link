@@ -25,23 +25,7 @@ public class GLBLoaderSetup : UdonSharpBehaviour
         {
             GameObject canvas = Instantiate(urlInputCanvasPrefab);
             canvas.name = "URLInputCanvas";
-
-            // Add CanvasDragger script to make it grabbable
-            CanvasDragger dragger = canvas.AddComponent<CanvasDragger>();
-
-            // Add collider for interaction if not present
-            if (canvas.GetComponent<Collider>() == null)
-            {
-                BoxCollider collider = canvas.AddComponent<BoxCollider>();
-                // Set collider size based on canvas - adjust as needed
-                RectTransform rectTransform = canvas.GetComponent<RectTransform>();
-                if (rectTransform != null)
-                {
-                    collider.size = new Vector3(rectTransform.rect.width, rectTransform.rect.height, 0.1f);
-                }
-            }
-
-            Debug.Log("[GLBLoaderSetup] Instantiated URL input canvas with dragger");
+            Debug.Log("[GLBLoaderSetup] Instantiated URL input canvas");
         }
     }
 }
