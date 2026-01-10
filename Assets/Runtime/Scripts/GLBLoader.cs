@@ -1,5 +1,6 @@
 ﻿
 using System;
+using System.Collections.Generic;
 using System.Text;
 using UdonSharp;
 using UnityEngine;
@@ -1284,6 +1285,7 @@ namespace VoyageVoyage
         // Array-based spatial mesh splitting for Udon compatibility (no generics)
         bool LoadMesh(DataDictionary meshInfo, out string name, out Mesh mesh, out int[] matIndices)
         {
+            float loadStart = Time.realtimeSinceStartup;
             mesh = new Mesh();
             bool gotMeshInfo = GetMeshInfo(meshInfo, out name, out int nSubmeshes, out object[] submeshesInfo, out int[] materialsIndices);
             matIndices = materialsIndices;
@@ -1299,12 +1301,8 @@ namespace VoyageVoyage
             if (nSubmeshes == 1)
             {
                 Mesh subMesh = LoadMeshFrom(submeshesInfo, 0);
-                mesh.indexFormat = (subMesh.vertexCount < 65535) ? UnityEngine.Rendering.IndexFormat.UInt16 : UnityEngine.Rendering.IndexFormat.UInt32;
-                mesh.vertices = subMesh.vertices;
-                mesh.normals = subMesh.normals;
-                mesh.tangents = subMesh.tangents;
-                mesh.uv = subMesh.uv;
-                mesh.triangles = subMesh.triangles;
+                // Always split into 2x2x2 grid for better performance
+                SplitMeshIntoSubmeshes(subMesh, mesh);
                 mesh.name = name;
                 return true;
             }
@@ -1361,7 +1359,63 @@ namespace VoyageVoyage
             mesh.tangents = allTangents;
             mesh.uv = allUV;
             mesh.name = name;
+            float loadDuration = Time.realtimeSinceStartup - loadStart;
+            if (loadDuration > 0.01f) // Log if mesh loading takes >10ms
+            {
+                ReportInfo("Profiling", $"LoadMesh '{name}' took {loadDuration:0.000}s");
+            }
             return true;
+        }
+
+        void SplitMeshIntoSubmeshes(Mesh sourceMesh, Mesh targetMesh)
+        {
+            targetMesh.indexFormat = (sourceMesh.vertexCount < 65535) ? UnityEngine.Rendering.IndexFormat.UInt16 : UnityEngine.Rendering.IndexFormat.UInt32;
+            targetMesh.vertices = sourceMesh.vertices;
+            targetMesh.normals = sourceMesh.normals;
+            targetMesh.tangents = sourceMesh.tangents;
+            targetMesh.uv = sourceMesh.uv;
+
+            Bounds bounds = sourceMesh.bounds;
+            Vector3 size = bounds.size;
+            Vector3 min = bounds.min;
+
+            // 2x2x2 grid
+            int gridX = 2, gridY = 2, gridZ = 2;
+            int totalSubmeshes = gridX * gridY * gridZ;
+            targetMesh.subMeshCount = totalSubmeshes;
+
+            List<int>[] submeshTriangles = new List<int>[totalSubmeshes];
+            for (int i = 0; i < totalSubmeshes; i++)
+            {
+                submeshTriangles[i] = new List<int>();
+            }
+
+            int[] triangles = sourceMesh.triangles;
+            Vector3[] vertices = sourceMesh.vertices;
+
+            for (int i = 0; i < triangles.Length; i += 3)
+            {
+                // Calculate centroid of triangle
+                Vector3 v0 = vertices[triangles[i]];
+                Vector3 v1 = vertices[triangles[i + 1]];
+                Vector3 v2 = vertices[triangles[i + 2]];
+                Vector3 centroid = (v0 + v1 + v2) / 3f;
+
+                // Determine grid cell
+                int x = Mathf.Clamp(Mathf.FloorToInt((centroid.x - min.x) / size.x * gridX), 0, gridX - 1);
+                int y = Mathf.Clamp(Mathf.FloorToInt((centroid.y - min.y) / size.y * gridY), 0, gridY - 1);
+                int z = Mathf.Clamp(Mathf.FloorToInt((centroid.z - min.z) / size.z * gridZ), 0, gridZ - 1);
+
+                int submeshIndex = x + y * gridX + z * gridX * gridY;
+                submeshTriangles[submeshIndex].Add(triangles[i]);
+                submeshTriangles[submeshIndex].Add(triangles[i + 1]);
+                submeshTriangles[submeshIndex].Add(triangles[i + 2]);
+            }
+
+            for (int i = 0; i < totalSubmeshes; i++)
+            {
+                targetMesh.SetTriangles(submeshTriangles[i], i);
+            }
         }
 
         int[] GetBufferViewInfo(DataDictionary bufferViewInfo)
@@ -2489,12 +2543,18 @@ namespace VoyageVoyage
 
         private void Update()
         {
+            float updateStart = Time.realtimeSinceStartup;
             if (downloadScheduled && Time.realtimeSinceStartup >= downloadTriggerTime)
             {
                 downloadScheduled = false;
                 DownloadModel();
             }
             ParseGLB();
+            float updateDuration = Time.realtimeSinceStartup - updateStart;
+            if (updateDuration > 0.01f) // Log if Update takes >10ms
+            {
+                ReportInfo("Profiling", $"Update took {updateDuration:0.000}s");
+            }
         }
 
         const string VrmExtensionName = "VRMC_vrm";
@@ -2719,10 +2779,11 @@ namespace VoyageVoyage
 
         public void ParseGLB()
         {
+            float stateStart = Time.realtimeSinceStartup;
 
             if (!StillHaveTime())
             {
-                limit = Time.realtimeSinceStartup + Time.fixedDeltaTime / 4; // Reduced from /2 to /4 for smoother spreading
+                limit = Time.realtimeSinceStartup + 0.001f; // Further reduced for minimal frame impact
             }
 
             //ReportInfo("ParseGLB", $"CurrentState : {currentState} - Index : {currentIndex}");
@@ -2776,6 +2837,12 @@ namespace VoyageVoyage
                     finished = true;
                     //enabled = false;
                     break;
+            }
+
+            float stateDuration = Time.realtimeSinceStartup - stateStart;
+            if (stateDuration > 0.005f) // Log if state takes >5ms
+            {
+                ReportInfo("Profiling", $"State {currentState} took {stateDuration:0.000}s");
             }
 
             TriggerNextIteration();
