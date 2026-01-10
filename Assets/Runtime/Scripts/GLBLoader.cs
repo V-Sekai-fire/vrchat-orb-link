@@ -1183,7 +1183,7 @@ namespace VoyageVoyage
             return ParseAccessorBuffer(accessor, options);
         }
 
-        Mesh[] LoadMeshFrom(object[] meshInfo, int startOffset)
+        Mesh LoadMeshFrom(object[] meshInfo, int startOffset)
         {
             Mesh m = new Mesh();
 
@@ -1278,7 +1278,7 @@ namespace VoyageVoyage
                 m.RecalculateNormals();
             }
 
-            return new Mesh[] { m };
+            return m;
 
         }
 
@@ -1301,8 +1301,8 @@ namespace VoyageVoyage
             if (nSubmeshes == 1)
             {
                 Mesh subMesh = LoadMeshFrom(submeshesInfo, 0);
-                Mesh[] subMeshes = SplitMeshIntoSubmeshes(subMesh);
-                m_meshChunks[m] = subMeshes;
+                SplitMeshIntoSubmeshes(subMesh);
+                m_meshChunks[m] = new Mesh[] { subMesh };
                 return true;
             }
 
@@ -1366,39 +1366,45 @@ namespace VoyageVoyage
             return true;
         }
 
-        Mesh[] SplitMeshIntoSubmeshes(Mesh sourceMesh)
+        void SplitMeshIntoSubmeshes(Mesh mesh)
         {
-            int triangleCount = sourceMesh.triangles.Length / 3;
+            int triangleCount = mesh.triangles.Length / 3;
             const int trianglesPerSubmesh = 500; // Fixed count per submesh
             int submeshCount = Mathf.CeilToInt((float)triangleCount / trianglesPerSubmesh);
-            Mesh[] result = new Mesh[submeshCount];
 
-            List<int>[] submeshTriangles = new List<int>[submeshCount];
+            int[][] submeshTriangles = new int[submeshCount][];
             for (int i = 0; i < submeshCount; i++)
             {
-                submeshTriangles[i] = new List<int>();
+                submeshTriangles[i] = new int[0];
             }
 
-            int[] triangles = sourceMesh.triangles;
+            int[] triangles = mesh.triangles;
+            int[] submeshSizes = new int[submeshCount];
+            for (int i = 0; i < triangles.Length; i += 3)
+            {
+                int submeshIndex = (i / 3) / trianglesPerSubmesh;
+                if (submeshIndex >= submeshCount) submeshIndex = submeshCount - 1;
+                submeshSizes[submeshIndex] += 3;
+            }
+
+            for (int i = 0; i < submeshCount; i++)
+            {
+                submeshTriangles[i] = new int[submeshSizes[i]];
+            }
+
+            int[] currentIndices = new int[submeshCount];
             for (int i = 0; i < triangles.Length; i++)
             {
                 int submeshIndex = (i / 3) / trianglesPerSubmesh;
                 if (submeshIndex >= submeshCount) submeshIndex = submeshCount - 1;
-                submeshTriangles[submeshIndex].Add(triangles[i]);
+                submeshTriangles[submeshIndex][currentIndices[submeshIndex]++] = triangles[i];
             }
 
+            mesh.subMeshCount = submeshCount;
             for (int i = 0; i < submeshCount; i++)
             {
-                Mesh subMesh = new Mesh();
-                subMesh.vertices = sourceMesh.vertices;
-                subMesh.normals = sourceMesh.normals;
-                subMesh.tangents = sourceMesh.tangents;
-                subMesh.uv = sourceMesh.uv;
-                subMesh.triangles = submeshTriangles[i].ToArray();
-                result[i] = subMesh;
+                mesh.SetTriangles(submeshTriangles[i], i);
             }
-
-            return result;
         }
 
         int[] GetBufferViewInfo(DataDictionary bufferViewInfo)
