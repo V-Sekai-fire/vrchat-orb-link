@@ -1321,6 +1321,11 @@ namespace VoyageVoyage
             if (effectiveStripeIndex < 0) effectiveStripeIndex += effectiveStripeModulo;
             bool stripeActive = enableStripeFilter && effectiveStripeModulo > 0;
 
+            if (logStageTiming)
+            {
+                Debug.Log($"[GLBLoader] Spegler stripe: active={stripeActive}, modulo={effectiveStripeModulo}, index={effectiveStripeIndex}, cells={totalCells}");
+            }
+
             // Process each submesh separately to preserve materials
             for (int subMeshIndex = 0; subMeshIndex < sourceMesh.subMeshCount; subMeshIndex++)
             {
@@ -1350,7 +1355,7 @@ namespace VoyageVoyage
                     cellTriangleCounts[cellIndex]++;
                 }
 
-                // Create chunks for non-empty cells (optional Spegler-style stripe)
+                // Create chunks for non-empty cells with Spegler spatial filtering
                 for (int cellIndex = 0; cellIndex < totalCells; cellIndex++)
                 {
                     if (stripeActive)
