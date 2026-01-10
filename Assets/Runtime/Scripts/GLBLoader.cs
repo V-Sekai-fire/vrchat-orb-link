@@ -1615,6 +1615,7 @@ namespace VoyageVoyage
             // Expand materials array to match subMeshCount for split meshes
             if (mesh.subMeshCount > sharedMaterials.Length)
             {
+                Debug.Log($"[LoadMeshFrom] Expanding materials from {sharedMaterials.Length} to {mesh.subMeshCount} for split mesh");
                 Material[] expanded = new Material[mesh.subMeshCount];
                 for (int i = 0; i < expanded.Length; i++)
                 {
