@@ -1375,44 +1375,26 @@ namespace VoyageVoyage
             targetMesh.tangents = sourceMesh.tangents;
             targetMesh.uv = sourceMesh.uv;
 
-            Bounds bounds = sourceMesh.bounds;
-            Vector3 size = bounds.size;
-            Vector3 min = bounds.min;
+            int[] triangles = sourceMesh.triangles;
+            int triangleCount = triangles.Length / 3;
+            const int trianglesPerSubmesh = 500; // Fixed count per submesh
+            int submeshCount = Mathf.CeilToInt((float)triangleCount / trianglesPerSubmesh);
+            targetMesh.subMeshCount = submeshCount;
 
-            // 2x2x2 grid
-            int gridX = 2, gridY = 2, gridZ = 2;
-            int totalSubmeshes = gridX * gridY * gridZ;
-            targetMesh.subMeshCount = totalSubmeshes;
-
-            List<int>[] submeshTriangles = new List<int>[totalSubmeshes];
-            for (int i = 0; i < totalSubmeshes; i++)
+            List<int>[] submeshTriangles = new List<int>[submeshCount];
+            for (int i = 0; i < submeshCount; i++)
             {
                 submeshTriangles[i] = new List<int>();
             }
 
-            int[] triangles = sourceMesh.triangles;
-            Vector3[] vertices = sourceMesh.vertices;
-
-            for (int i = 0; i < triangles.Length; i += 3)
+            for (int i = 0; i < triangles.Length; i++)
             {
-                // Calculate centroid of triangle
-                Vector3 v0 = vertices[triangles[i]];
-                Vector3 v1 = vertices[triangles[i + 1]];
-                Vector3 v2 = vertices[triangles[i + 2]];
-                Vector3 centroid = (v0 + v1 + v2) / 3f;
-
-                // Determine grid cell
-                int x = Mathf.Clamp(Mathf.FloorToInt((centroid.x - min.x) / size.x * gridX), 0, gridX - 1);
-                int y = Mathf.Clamp(Mathf.FloorToInt((centroid.y - min.y) / size.y * gridY), 0, gridY - 1);
-                int z = Mathf.Clamp(Mathf.FloorToInt((centroid.z - min.z) / size.z * gridZ), 0, gridZ - 1);
-
-                int submeshIndex = x + y * gridX + z * gridX * gridY;
+                int submeshIndex = (i / 3) / trianglesPerSubmesh;
+                if (submeshIndex >= submeshCount) submeshIndex = submeshCount - 1;
                 submeshTriangles[submeshIndex].Add(triangles[i]);
-                submeshTriangles[submeshIndex].Add(triangles[i + 1]);
-                submeshTriangles[submeshIndex].Add(triangles[i + 2]);
             }
 
-            for (int i = 0; i < totalSubmeshes; i++)
+            for (int i = 0; i < submeshCount; i++)
             {
                 targetMesh.SetTriangles(submeshTriangles[i], i);
             }
