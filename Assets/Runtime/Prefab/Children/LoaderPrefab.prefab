@@ -342,6 +342,14 @@ MonoBehaviour:
   scenesInfoRoot: {fileID: 3362930879072297392}
   m_materials: []
   m_textures: []
+  enableStripeFilter: 1
+  stripeModulo: 8
+  stripeIndex: 0
+  loaderOffset: {x: 0, y: 0, z: 0}
+  showProgressIndicator: 1
+  logStageTiming: 1
+  autoDownload: 1
+  startDelaySeconds: 2
 --- !u!114 &2792029052745083663
 MonoBehaviour:
   m_ObjectHideFlags: 0
