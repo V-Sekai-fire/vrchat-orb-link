@@ -1611,6 +1611,18 @@ namespace VoyageVoyage
                     sharedMaterials[sharedMatIndex] = NewMaterial(baseMaterial);
                 }
             }
+
+            // Expand materials array to match subMeshCount for split meshes
+            if (mesh.subMeshCount > sharedMaterials.Length)
+            {
+                Material[] expanded = new Material[mesh.subMeshCount];
+                for (int i = 0; i < expanded.Length; i++)
+                {
+                    expanded[i] = sharedMaterials[i % sharedMaterials.Length];
+                }
+                sharedMaterials = expanded;
+            }
+
             renderer.sharedMaterials = sharedMaterials;
 
             /*BoxCollider boxCollider = node.GetComponent<BoxCollider>();
