@@ -1398,16 +1398,6 @@ namespace VoyageVoyage
             Mesh[] chunks = new Mesh[0];
             int chunkCount = 0;
 
-            int effectiveStripeModulo = Mathf.Max(1, stripeModulo);
-            int effectiveStripeIndex = stripeIndex % effectiveStripeModulo;
-            if (effectiveStripeIndex < 0) effectiveStripeIndex += effectiveStripeModulo;
-            bool stripeActive = enableStripeFilter && effectiveStripeModulo > 0;
-
-            if (logStageTiming)
-            {
-                Debug.Log($"[GLBLoader] Spegler stripe: active={stripeActive}, modulo={effectiveStripeModulo}, index={effectiveStripeIndex}, cells={totalCells}");
-            }
-
             // Process each submesh separately to preserve materials
             for (int subMeshIndex = 0; subMeshIndex < sourceMesh.subMeshCount; subMeshIndex++)
             {
@@ -1437,20 +1427,9 @@ namespace VoyageVoyage
                     cellTriangleCounts[cellIndex]++;
                 }
 
-                // Create chunks for non-empty cells with Spegler spatial filtering
+                // Create chunks for non-empty cells
                 for (int cellIndex = 0; cellIndex < totalCells; cellIndex++)
                 {
-                    if (stripeActive)
-                    {
-                        // Spegler stripe key: sum of grid coordinates modulo stripe count
-                        int z = cellIndex / (xSplits * ySplits);
-                        int rem = cellIndex - z * xSplits * ySplits;
-                        int y = rem / xSplits;
-                        int x = rem - y * xSplits;
-                        int stripeKey = (x + y + z) % effectiveStripeModulo;
-                        if (stripeKey != effectiveStripeIndex) continue;
-                    }
-
                     int triCount = cellTriangleCounts[cellIndex];
                     if (triCount == 0) continue;
 
