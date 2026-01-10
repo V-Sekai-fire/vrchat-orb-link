@@ -1369,7 +1369,7 @@ namespace VoyageVoyage
         void SplitMeshIntoSubmeshes(Mesh mesh)
         {
             int triangleCount = mesh.triangles.Length / 3;
-            const int trianglesPerSubmesh = 500; // Fixed count per submesh
+            const int trianglesPerSubmesh = 1000; // Fixed count per submesh
             int submeshCount = Mathf.CeilToInt((float)triangleCount / trianglesPerSubmesh);
 
             int[][] submeshTriangles = new int[submeshCount][];
@@ -2785,7 +2785,7 @@ namespace VoyageVoyage
 
             if (!StillHaveTime())
             {
-                limit = Time.realtimeSinceStartup + 0.001f; // Further reduced for minimal frame impact
+                limit = Time.realtimeSinceStartup + 0.005f; // Increased for faster total parse time
             }
 
             //ReportInfo("ParseGLB", $"CurrentState : {currentState} - Index : {currentIndex}");
