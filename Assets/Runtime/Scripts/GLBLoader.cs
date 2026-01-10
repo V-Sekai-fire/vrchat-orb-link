@@ -48,6 +48,11 @@ namespace VoyageVoyage
         object[] m_samplerProperties = new object[0];
         long[] m_stats = new long[statsFieldCount];
         GameObject[] m_nodes = new GameObject[0];
+        
+        // Progressive chunk spawning state
+        int[] pendingChunkCounts = new int[0]; // Chunks remaining per mesh
+        int[] pendingChunkIndices = new int[0]; // Current chunk index per mesh
+        GameObject[] pendingParentNodes = new GameObject[0]; // Parent nodes for chunks
 
         // Stripe filtering per loader instance (for staggered multi-instance setups)
         public bool enableStripeFilter = true;
@@ -159,12 +164,89 @@ namespace VoyageVoyage
             m_textures = new Texture2D[0];
             m_nodes = new GameObject[0];
             m_stats = new long[statsFieldCount];
+            
+            pendingChunkCounts = new int[0];
+            pendingChunkIndices = new int[0];
+            pendingParentNodes = new GameObject[0];
 
             finished = false;
             limit = 0;
 
             defaultScene = -1;
             nScenes = 0;
+        }
+
+
+        public void SpawnNextChunk()
+        {
+            // Find next mesh with pending chunks
+            for (int meshIndex = 0; meshIndex < pendingChunkCounts.Length; meshIndex++)
+            {
+                if (pendingChunkCounts[meshIndex] <= 0) continue;
+                
+                GameObject node = pendingParentNodes[meshIndex];
+                if (node == null) continue;
+                
+                object[] meshInfo = (object[])m_meshesInfo[meshIndex];
+                if (meshInfo == null) continue;
+                
+                int[] materialsIndices = (int[])meshInfo[1];
+                Mesh[] chunks = m_meshChunks[meshIndex];
+                int chunkIdx = pendingChunkIndices[meshIndex];
+                
+                if (chunkIdx >= chunks.Length) continue;
+                
+                // Spawn one chunk
+                GameObject chunkNode = Instantiate(nodePrefab, node.transform);
+                chunkNode.name = node.name + "_c" + chunkIdx;
+
+                Mesh chunkMesh = chunks[chunkIdx];
+                chunkMesh.RecalculateBounds();
+
+                MeshFilter chunkFilter = chunkNode.GetComponent<MeshFilter>();
+                chunkFilter.sharedMesh = chunkMesh;
+
+                MeshRenderer chunkRenderer = chunkFilter.GetComponent<MeshRenderer>();
+                int nIndices = materialsIndices.Length;
+                int nKnownMaterials = m_materials.Length;
+                Material[] sharedMaterials = new Material[nIndices];
+
+                for (int sharedMatIndex = 0; sharedMatIndex < nIndices; sharedMatIndex++)
+                {
+                    int materialIndex = materialsIndices[sharedMatIndex];
+                    if ((materialIndex >= 0) & (materialIndex < nKnownMaterials))
+                    {
+                        sharedMaterials[sharedMatIndex] = m_materials[materialIndex];
+                    }
+                    else
+                    {
+                        sharedMaterials[sharedMatIndex] = NewMaterial(baseMaterial);
+                    }
+                }
+                chunkRenderer.sharedMaterials = sharedMaterials;
+                
+                // Update state
+                pendingChunkIndices[meshIndex]++;
+                pendingChunkCounts[meshIndex]--;
+                
+                // Continue spawning if more chunks remain
+                bool hasMoreChunks = false;
+                for (int i = 0; i < pendingChunkCounts.Length; i++)
+                {
+                    if (pendingChunkCounts[i] > 0)
+                    {
+                        hasMoreChunks = true;
+                        break;
+                    }
+                }
+                
+                if (hasMoreChunks)
+                {
+                    SendCustomEventDelayedFrames(nameof(SpawnNextChunk), 1);
+                }
+                
+                return; // Only spawn one chunk per call
+            }
         }
 
 
@@ -1724,9 +1806,11 @@ namespace VoyageVoyage
 
             if (hasChunks)
             {
-                // Spawn chunks as child GameObjects
+                // Spawn chunks as child GameObjects - progressive piece-by-piece
                 Mesh[] chunks = m_meshChunks[meshIndex];
-                for (int c = 0; c < chunks.Length; c++)
+                int chunksToSpawn = Mathf.Min(chunks.Length, 1); // Only spawn 1 chunk per frame for progressive loading
+                
+                for (int c = 0; c < chunksToSpawn; c++)
                 {
                     GameObject chunkNode = Instantiate(nodePrefab, node.transform);
                     chunkNode.name = node.name + "_c" + c;
@@ -1755,6 +1839,22 @@ namespace VoyageVoyage
                         }
                     }
                     chunkRenderer.sharedMaterials = sharedMaterials;
+                }
+                
+                // Track remaining chunks for progressive spawning
+                if (chunks.Length > chunksToSpawn)
+                {
+                    if (pendingChunkCounts.Length != m_meshChunks.Length)
+                    {
+                        pendingChunkCounts = new int[m_meshChunks.Length];
+                        pendingChunkIndices = new int[m_meshChunks.Length];
+                        pendingParentNodes = new GameObject[m_meshChunks.Length];
+                    }
+                    pendingChunkCounts[meshIndex] = chunks.Length - chunksToSpawn;
+                    pendingChunkIndices[meshIndex] = chunksToSpawn;
+                    pendingParentNodes[meshIndex] = node;
+                    
+                    SendCustomEventDelayedFrames(nameof(SpawnNextChunk), 1);
                 }
             }
             else
