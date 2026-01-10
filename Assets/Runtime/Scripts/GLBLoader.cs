@@ -1302,7 +1302,7 @@ namespace VoyageVoyage
             {
                 Mesh subMesh = LoadMeshFrom(submeshesInfo, 0);
                 SplitMeshIntoSubmeshes(subMesh);
-                m_meshChunks[m] = new Mesh[] { subMesh };
+                mesh = subMesh;
                 return true;
             }
 
@@ -1514,7 +1514,7 @@ namespace VoyageVoyage
                 bool gotAMesh = LoadMesh((DataDictionary)meshInfoToken, out string name, out Mesh mesh, out int[] materialsIndices);
                 if (!gotAMesh) continue;
 
-                // No chunking - use full mesh
+                // Meshes are now chunked into submeshes
                 m_meshChunks[m] = new Mesh[] { mesh };
 
                 meshesInfo[m] = new object[] { mesh, materialsIndices };
