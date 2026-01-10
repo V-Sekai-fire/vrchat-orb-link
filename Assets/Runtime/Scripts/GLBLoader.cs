@@ -48,11 +48,6 @@ namespace VoyageVoyage
         object[] m_samplerProperties = new object[0];
         long[] m_stats = new long[statsFieldCount];
         GameObject[] m_nodes = new GameObject[0];
-        
-        // Progressive chunk spawning state
-        int[] pendingChunkCounts = new int[0]; // Chunks remaining per mesh
-        int[] pendingChunkIndices = new int[0]; // Current chunk index per mesh
-        GameObject[] pendingParentNodes = new GameObject[0]; // Parent nodes for chunks
 
         // Stripe filtering per loader instance (for staggered multi-instance setups)
         public bool enableStripeFilter = true;
@@ -164,89 +159,12 @@ namespace VoyageVoyage
             m_textures = new Texture2D[0];
             m_nodes = new GameObject[0];
             m_stats = new long[statsFieldCount];
-            
-            pendingChunkCounts = new int[0];
-            pendingChunkIndices = new int[0];
-            pendingParentNodes = new GameObject[0];
 
             finished = false;
             limit = 0;
 
             defaultScene = -1;
             nScenes = 0;
-        }
-
-
-        public void SpawnNextChunk()
-        {
-            // Find next mesh with pending chunks
-            for (int meshIndex = 0; meshIndex < pendingChunkCounts.Length; meshIndex++)
-            {
-                if (pendingChunkCounts[meshIndex] <= 0) continue;
-                
-                GameObject node = pendingParentNodes[meshIndex];
-                if (node == null) continue;
-                
-                object[] meshInfo = (object[])m_meshesInfo[meshIndex];
-                if (meshInfo == null) continue;
-                
-                int[] materialsIndices = (int[])meshInfo[1];
-                Mesh[] chunks = m_meshChunks[meshIndex];
-                int chunkIdx = pendingChunkIndices[meshIndex];
-                
-                if (chunkIdx >= chunks.Length) continue;
-                
-                // Spawn one chunk
-                GameObject chunkNode = Instantiate(nodePrefab, node.transform);
-                chunkNode.name = node.name + "_c" + chunkIdx;
-
-                Mesh chunkMesh = chunks[chunkIdx];
-                chunkMesh.RecalculateBounds();
-
-                MeshFilter chunkFilter = chunkNode.GetComponent<MeshFilter>();
-                chunkFilter.sharedMesh = chunkMesh;
-
-                MeshRenderer chunkRenderer = chunkFilter.GetComponent<MeshRenderer>();
-                int nIndices = materialsIndices.Length;
-                int nKnownMaterials = m_materials.Length;
-                Material[] sharedMaterials = new Material[nIndices];
-
-                for (int sharedMatIndex = 0; sharedMatIndex < nIndices; sharedMatIndex++)
-                {
-                    int materialIndex = materialsIndices[sharedMatIndex];
-                    if ((materialIndex >= 0) & (materialIndex < nKnownMaterials))
-                    {
-                        sharedMaterials[sharedMatIndex] = m_materials[materialIndex];
-                    }
-                    else
-                    {
-                        sharedMaterials[sharedMatIndex] = NewMaterial(baseMaterial);
-                    }
-                }
-                chunkRenderer.sharedMaterials = sharedMaterials;
-                
-                // Update state
-                pendingChunkIndices[meshIndex]++;
-                pendingChunkCounts[meshIndex]--;
-                
-                // Continue spawning if more chunks remain
-                bool hasMoreChunks = false;
-                for (int i = 0; i < pendingChunkCounts.Length; i++)
-                {
-                    if (pendingChunkCounts[i] > 0)
-                    {
-                        hasMoreChunks = true;
-                        break;
-                    }
-                }
-                
-                if (hasMoreChunks)
-                {
-                    SendCustomEventDelayedFrames(nameof(SpawnNextChunk), 1);
-                }
-                
-                return; // Only spawn one chunk per call
-            }
         }
 
 
@@ -1364,159 +1282,6 @@ namespace VoyageVoyage
         }
 
         // Array-based spatial mesh splitting for Udon compatibility (no generics)
-        Mesh[] SplitMeshSpatially(Mesh sourceMesh, string baseName)
-        {
-            int vertCount = sourceMesh.vertexCount;
-            if (vertCount <= MAX_VERTS_PER_CHUNK)
-            {
-                return new Mesh[] { sourceMesh };
-            }
-
-            // Calculate grid dimensions based on bounding box
-            Bounds bounds = sourceMesh.bounds;
-            Vector3 size = bounds.size;
-            int xSplits = Mathf.Max(1, Mathf.CeilToInt(size.x / GRID_CELL_SIZE));
-            int ySplits = Mathf.Max(1, Mathf.CeilToInt(size.y / GRID_CELL_SIZE));
-            int zSplits = Mathf.Max(1, Mathf.CeilToInt(size.z / GRID_CELL_SIZE));
-            int totalCells = xSplits * ySplits * zSplits;
-
-            Vector3 min = bounds.min;
-            Vector3 cellSize = new Vector3(size.x / xSplits, size.y / ySplits, size.z / zSplits);
-
-            Vector3[] vertices = sourceMesh.vertices;
-            Vector3[] normals = sourceMesh.normals;
-            Vector2[] uv = sourceMesh.uv;
-            Vector4[] tangents = sourceMesh.tangents;
-            Color[] colors = sourceMesh.colors;
-
-            bool hasNormals = normals != null && normals.Length > 0;
-            bool hasUV = uv != null && uv.Length > 0;
-            bool hasTangents = tangents != null && tangents.Length > 0;
-            bool hasColors = colors != null && colors.Length > 0;
-
-            // Dynamic array for chunks
-            Mesh[] chunks = new Mesh[0];
-            int chunkCount = 0;
-
-            // Process each submesh separately to preserve materials
-            for (int subMeshIndex = 0; subMeshIndex < sourceMesh.subMeshCount; subMeshIndex++)
-            {
-                int[] sourceTriangles = sourceMesh.GetTriangles(subMeshIndex);
-                
-                // Array-based grouping: [cellIndex][triangleIndices...]
-                // First pass: count triangles per cell
-                int[] cellTriangleCounts = new int[totalCells];
-                int[] triangleCellAssignments = new int[sourceTriangles.Length / 3];
-                
-                for (int t = 0; t < sourceTriangles.Length; t += 3)
-                {
-                    int i0 = sourceTriangles[t];
-                    int i1 = sourceTriangles[t + 1];
-                    int i2 = sourceTriangles[t + 2];
-
-                    // Calculate triangle center
-                    Vector3 center = (vertices[i0] + vertices[i1] + vertices[i2]) / 3f;
-
-                    // Determine grid cell
-                    int x = Mathf.Clamp((int)((center.x - min.x) / cellSize.x), 0, xSplits - 1);
-                    int y = Mathf.Clamp((int)((center.y - min.y) / cellSize.y), 0, ySplits - 1);
-                    int z = Mathf.Clamp((int)((center.z - min.z) / cellSize.z), 0, zSplits - 1);
-                    int cellIndex = x + y * xSplits + z * xSplits * ySplits;
-
-                    triangleCellAssignments[t / 3] = cellIndex;
-                    cellTriangleCounts[cellIndex]++;
-                }
-
-                // Create chunks for non-empty cells
-                for (int cellIndex = 0; cellIndex < totalCells; cellIndex++)
-                {
-                    int triCount = cellTriangleCounts[cellIndex];
-                    if (triCount == 0) continue;
-
-                    // Gather triangle indices for this cell
-                    int[] cellTriangleIndices = new int[triCount * 3];
-                    int writeIdx = 0;
-                    
-                    for (int t = 0; t < sourceTriangles.Length; t += 3)
-                    {
-                        if (triangleCellAssignments[t / 3] == cellIndex)
-                        {
-                            cellTriangleIndices[writeIdx++] = sourceTriangles[t];
-                            cellTriangleIndices[writeIdx++] = sourceTriangles[t + 1];
-                            cellTriangleIndices[writeIdx++] = sourceTriangles[t + 2];
-                        }
-                    }
-
-                    // Build unique vertex list for this chunk using array-based remapping
-                    int maxVertIndex = -1;
-                    for (int i = 0; i < cellTriangleIndices.Length; i++)
-                    {
-                        if (cellTriangleIndices[i] > maxVertIndex) maxVertIndex = cellTriangleIndices[i];
-                    }
-                    
-                    int[] vertexRemap = new int[maxVertIndex + 1];
-                    for (int i = 0; i <= maxVertIndex; i++) vertexRemap[i] = -1;
-
-                    // Count unique vertices
-                    int uniqueVertCount = 0;
-                    for (int i = 0; i < cellTriangleIndices.Length; i++)
-                    {
-                        int oldIndex = cellTriangleIndices[i];
-                        if (vertexRemap[oldIndex] == -1)
-                        {
-                            vertexRemap[oldIndex] = uniqueVertCount;
-                            uniqueVertCount++;
-                        }
-                    }
-
-                    // Allocate chunk data
-                    Vector3[] chunkVerts = new Vector3[uniqueVertCount];
-                    Vector3[] chunkNormals = hasNormals ? new Vector3[uniqueVertCount] : null;
-                    Vector2[] chunkUV = hasUV ? new Vector2[uniqueVertCount] : null;
-                    Vector4[] chunkTangents = hasTangents ? new Vector4[uniqueVertCount] : null;
-                    Color[] chunkColors = hasColors ? new Color[uniqueVertCount] : null;
-                    int[] chunkTriangles = new int[cellTriangleIndices.Length];
-
-                    // Fill vertex data and remap triangles
-                    for (int i = 0; i < cellTriangleIndices.Length; i++)
-                    {
-                        int oldIndex = cellTriangleIndices[i];
-                        int newIndex = vertexRemap[oldIndex];
-                        
-                        if (i == 0 || cellTriangleIndices[i] != cellTriangleIndices[i-1] || i % 3 == 0)
-                        {
-                            chunkVerts[newIndex] = vertices[oldIndex];
-                            if (hasNormals) chunkNormals[newIndex] = normals[oldIndex];
-                            if (hasUV) chunkUV[newIndex] = uv[oldIndex];
-                            if (hasTangents) chunkTangents[newIndex] = tangents[oldIndex];
-                            if (hasColors) chunkColors[newIndex] = colors[oldIndex];
-                        }
-                        
-                        chunkTriangles[i] = newIndex;
-                    }
-
-                    // Create chunk mesh
-                    Mesh chunkMesh = new Mesh();
-                    chunkMesh.name = baseName + "_c" + chunkCount + "_s" + subMeshIndex;
-                    chunkMesh.vertices = chunkVerts;
-                    if (hasNormals) chunkMesh.normals = chunkNormals;
-                    if (hasUV) chunkMesh.uv = chunkUV;
-                    if (hasTangents) chunkMesh.tangents = chunkTangents;
-                    if (hasColors) chunkMesh.colors = chunkColors;
-                    chunkMesh.triangles = chunkTriangles;
-
-                    // Add to chunks array
-                    Mesh[] newChunks = new Mesh[chunkCount + 1];
-                    for (int i = 0; i < chunkCount; i++) newChunks[i] = chunks[i];
-                    newChunks[chunkCount] = chunkMesh;
-                    chunks = newChunks;
-                    chunkCount++;
-                }
-            }
-
-            return chunks;
-        }
-
         bool LoadMesh(DataDictionary meshInfo, out string name, out Mesh mesh, out int[] matIndices)
         {
             mesh = new Mesh();
@@ -1706,9 +1471,8 @@ namespace VoyageVoyage
                 bool gotAMesh = LoadMesh((DataDictionary)meshInfoToken, out string name, out Mesh mesh, out int[] materialsIndices);
                 if (!gotAMesh) continue;
 
-                // Split mesh into spatial chunks if needed
-                Mesh[] chunks = SplitMeshSpatially(mesh, name);
-                m_meshChunks[m] = chunks;
+                // No chunking - use full mesh
+                m_meshChunks[m] = new Mesh[] { mesh };
 
                 meshesInfo[m] = new object[] { mesh, materialsIndices };
                 CountNewTriangles(mesh.triangles.LongLength);
@@ -1780,90 +1544,31 @@ namespace VoyageVoyage
 
             if (mesh == null) return;
 
-            // Check if mesh was spatially chunked
-            bool hasChunks = (meshIndex < m_meshChunks.Length) && (m_meshChunks[meshIndex] != null) && (m_meshChunks[meshIndex].Length > 1);
+            // Use single mesh - no chunking
+            mesh.RecalculateBounds();
+            MeshFilter filter = node.GetComponent<MeshFilter>();
+            filter.sharedMesh = mesh;
 
-            if (hasChunks)
+            if (materialsIndices == null) return;
+            MeshRenderer renderer = filter.GetComponent<MeshRenderer>();
+
+            int nIndices = materialsIndices.Length;
+            int nKnownMaterials = m_materials.Length;
+            Material[] sharedMaterials = new Material[nIndices];
+
+            for (int sharedMatIndex = 0; sharedMatIndex < nIndices; sharedMatIndex++)
             {
-                // Spawn chunks as child GameObjects - progressive piece-by-piece
-                Mesh[] chunks = m_meshChunks[meshIndex];
-                int chunksToSpawn = Mathf.Min(chunks.Length, 1); // Only spawn 1 chunk per frame for progressive loading
-                
-                for (int c = 0; c < chunksToSpawn; c++)
+                int materialIndex = materialsIndices[sharedMatIndex];
+                if ((materialIndex >= 0) & (materialIndex < nKnownMaterials))
                 {
-                    GameObject chunkNode = Instantiate(nodePrefab, node.transform);
-                    chunkNode.name = node.name + "_c" + c;
-
-                    Mesh chunkMesh = chunks[c];
-                    chunkMesh.RecalculateBounds();
-
-                    MeshFilter chunkFilter = chunkNode.GetComponent<MeshFilter>();
-                    chunkFilter.sharedMesh = chunkMesh;
-
-                    MeshRenderer chunkRenderer = chunkFilter.GetComponent<MeshRenderer>();
-                    int nIndices = materialsIndices.Length;
-                    int nKnownMaterials = m_materials.Length;
-                    Material[] sharedMaterials = new Material[nIndices];
-
-                    for (int sharedMatIndex = 0; sharedMatIndex < nIndices; sharedMatIndex++)
-                    {
-                        int materialIndex = materialsIndices[sharedMatIndex];
-                        if ((materialIndex >= 0) & (materialIndex < nKnownMaterials))
-                        {
-                            sharedMaterials[sharedMatIndex] = m_materials[materialIndex];
-                        }
-                        else
-                        {
-                            sharedMaterials[sharedMatIndex] = NewMaterial(baseMaterial);
-                        }
-                    }
-                    chunkRenderer.sharedMaterials = sharedMaterials;
+                    sharedMaterials[sharedMatIndex] = m_materials[materialIndex];
                 }
-                
-                // Track remaining chunks for progressive spawning
-                if (chunks.Length > chunksToSpawn)
+                else
                 {
-                    if (pendingChunkCounts.Length != m_meshChunks.Length)
-                    {
-                        pendingChunkCounts = new int[m_meshChunks.Length];
-                        pendingChunkIndices = new int[m_meshChunks.Length];
-                        pendingParentNodes = new GameObject[m_meshChunks.Length];
-                    }
-                    pendingChunkCounts[meshIndex] = chunks.Length - chunksToSpawn;
-                    pendingChunkIndices[meshIndex] = chunksToSpawn;
-                    pendingParentNodes[meshIndex] = node;
-                    
-                    SendCustomEventDelayedFrames(nameof(SpawnNextChunk), 1);
+                    sharedMaterials[sharedMatIndex] = NewMaterial(baseMaterial);
                 }
             }
-            else
-            {
-                // Single mesh - use original
-                mesh.RecalculateBounds();
-                MeshFilter filter = node.GetComponent<MeshFilter>();
-                filter.sharedMesh = mesh;
-
-                if (materialsIndices == null) return;
-                MeshRenderer renderer = filter.GetComponent<MeshRenderer>();
-
-                int nIndices = materialsIndices.Length;
-                int nKnownMaterials = m_materials.Length;
-                Material[] sharedMaterials = new Material[nIndices];
-
-                for (int sharedMatIndex = 0; sharedMatIndex < nIndices; sharedMatIndex++)
-                {
-                    int materialIndex = materialsIndices[sharedMatIndex];
-                    if ((materialIndex >= 0) & (materialIndex < nKnownMaterials))
-                    {
-                        sharedMaterials[sharedMatIndex] = m_materials[materialIndex];
-                    }
-                    else
-                    {
-                        sharedMaterials[sharedMatIndex] = NewMaterial(baseMaterial);
-                    }
-                }
-                renderer.sharedMaterials = sharedMaterials;
-            }
+            renderer.sharedMaterials = sharedMaterials;
 
             /*BoxCollider boxCollider = node.GetComponent<BoxCollider>();
             Vector3 center = renderer.bounds.center;
